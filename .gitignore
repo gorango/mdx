@@ -1,0 +1,4 @@
+api.test
+cover.out
+bin/
+.env
