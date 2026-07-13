@@ -1,10 +1,10 @@
 package cache
 
 import (
-	"testing"
-	"time"
 	"gorango/exchanges/domain/timeframe"
 	"gorango/exchanges/domain/types"
+	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )

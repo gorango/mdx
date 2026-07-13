@@ -3,12 +3,12 @@ package flusher
 import (
 	"context"
 	"fmt"
-	"strings"
-	"sync"
-	"time"
 	"gorango/exchanges/domain/symbols"
 	"gorango/exchanges/domain/types"
 	"gorango/exchanges/internal/db"
+	"strings"
+	"sync"
+	"time"
 )
 
 func findCharIndex(s string, c rune) int {

@@ -1,9 +1,9 @@
 package pipeline
 
 import (
-	"testing"
 	"gorango/exchanges/domain/types"
 	"gorango/exchanges/internal/orderbook/api"
+	"testing"
 )
 
 func TestLastFundingRateAt(t *testing.T) {

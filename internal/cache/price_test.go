@@ -3,14 +3,14 @@ package cache
 import (
 	"context"
 	"fmt"
+	"gorango/exchanges/domain/timeframe"
+	"gorango/exchanges/domain/types"
+	"gorango/exchanges/internal/rest"
 	"log/slog"
 	"sort"
 	"sync"
 	"testing"
 	"time"
-	"gorango/exchanges/domain/timeframe"
-	"gorango/exchanges/domain/types"
-	"gorango/exchanges/internal/rest"
 
 	"github.com/stretchr/testify/assert"
 )

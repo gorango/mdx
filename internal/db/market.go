@@ -3,11 +3,11 @@ package db
 import (
 	"context"
 	"fmt"
-	"os"
-	"time"
 	"gorango/exchanges/domain/timeframe"
 	"gorango/exchanges/domain/types"
 	"gorango/exchanges/internal/orderbook/api"
+	"os"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )

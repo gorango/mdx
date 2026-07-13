@@ -2,9 +2,9 @@ package flusher
 
 import (
 	"context"
+	"gorango/exchanges/domain/types"
 	"testing"
 	"time"
-	"gorango/exchanges/domain/types"
 
 	"github.com/stretchr/testify/assert"
 )

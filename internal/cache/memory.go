@@ -1,8 +1,8 @@
 package cache
 
 import (
-	"sync"
 	"gorango/exchanges/domain/types"
+	"sync"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 )

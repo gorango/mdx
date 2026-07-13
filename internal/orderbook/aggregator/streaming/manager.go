@@ -2,10 +2,10 @@ package streaming
 
 import (
 	"fmt"
+	"gorango/exchanges/domain/types"
 	"math"
 	"sync"
 	"time"
-	"gorango/exchanges/domain/types"
 )
 
 // Manager maintains aggregators per symbol

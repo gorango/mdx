@@ -3,10 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"gorango/exchanges/internal/orderbook/api"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"gorango/exchanges/internal/orderbook/api"
 
 	"github.com/joho/godotenv"
 )

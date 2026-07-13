@@ -98,12 +98,12 @@ func (e *Event) UnmarshalJSON(b []byte) error {
 }
 
 type rawEvent struct {
-	Type             EventType        `json:"type"`
-	Symbol           string           `json:"symbol"`
-	Timestamp        int64            `json:"timestamp"`
-	Trade            *Trade           `json:"trade,omitempty"`
-	OrderbookUpdate  *OrderbookUpdate `json:"orderbook_update,omitempty"`
-	Liquidation      *Liquidation     `json:"liquidation,omitempty"`
-	FundingRate      *FundingRate     `json:"funding_rate,omitempty"`
-	OpenInterest     *OpenInterest    `json:"open_interest,omitempty"`
+	Type            EventType        `json:"type"`
+	Symbol          string           `json:"symbol"`
+	Timestamp       int64            `json:"timestamp"`
+	Trade           *Trade           `json:"trade,omitempty"`
+	OrderbookUpdate *OrderbookUpdate `json:"orderbook_update,omitempty"`
+	Liquidation     *Liquidation     `json:"liquidation,omitempty"`
+	FundingRate     *FundingRate     `json:"funding_rate,omitempty"`
+	OpenInterest    *OpenInterest    `json:"open_interest,omitempty"`
 }

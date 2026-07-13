@@ -3,10 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"gorango/exchanges/internal/orderbook/api"
 	"log"
 	"os"
 	"strings"
-	"gorango/exchanges/internal/orderbook/api"
 
 	"github.com/joho/godotenv"
 	"github.com/parquet-go/parquet-go"

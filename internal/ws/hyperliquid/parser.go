@@ -3,9 +3,9 @@ package hyperliquid
 import (
 	"encoding/json"
 	"fmt"
+	"gorango/exchanges/domain/types"
 	"strconv"
 	"strings"
-	"gorango/exchanges/domain/types"
 )
 
 type Parser struct{}

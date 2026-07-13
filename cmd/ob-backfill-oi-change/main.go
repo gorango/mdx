@@ -4,10 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"gorango/exchanges/internal/db"
 	"log"
 	"os"
 	"time"
-	"gorango/exchanges/internal/db"
 
 	"github.com/joho/godotenv"
 )

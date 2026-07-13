@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"gorango/exchanges/domain/timeframe"
+	"gorango/exchanges/domain/types"
 	"io"
 	"log/slog"
 	"strings"
 	"sync"
 	"time"
-	"gorango/exchanges/domain/timeframe"
-	"gorango/exchanges/domain/types"
 
 	"github.com/nats-io/nats.go"
 )

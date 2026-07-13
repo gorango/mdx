@@ -3,10 +3,10 @@ package binance
 import (
 	"encoding/json"
 	"fmt"
+	"gorango/exchanges/domain/types"
 	"strconv"
 	"strings"
 	"time"
-	"gorango/exchanges/domain/types"
 )
 
 type Parser struct{}

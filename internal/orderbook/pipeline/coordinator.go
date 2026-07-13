@@ -3,13 +3,13 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"os"
-	"time"
 	"gorango/exchanges/domain/symbols"
 	"gorango/exchanges/internal/db"
 	"gorango/exchanges/internal/orderbook/aggregator"
 	"gorango/exchanges/internal/orderbook/api"
+	"log/slog"
+	"os"
+	"time"
 )
 
 // Config contains the pipeline configuration

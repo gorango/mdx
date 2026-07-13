@@ -1,10 +1,10 @@
 package cache
 
 import (
-	"sort"
-	"time"
 	"gorango/exchanges/domain/timeframe"
 	"gorango/exchanges/domain/types"
+	"sort"
+	"time"
 )
 
 type Gap struct {

@@ -3,10 +3,10 @@ package trading
 import (
 	"context"
 	"fmt"
-	"time"
 	"gorango/exchanges/domain/symbols"
 	"gorango/exchanges/domain/types"
 	"gorango/exchanges/internal/rest"
+	"time"
 )
 
 type RESTConnector struct {

@@ -3,9 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"gorango/exchanges/internal/streamer"
 	"log/slog"
 	"os"
-	"gorango/exchanges/internal/streamer"
 
 	"gopkg.in/yaml.v3"
 )

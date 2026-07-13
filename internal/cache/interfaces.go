@@ -2,9 +2,9 @@ package cache
 
 import (
 	"context"
-	"time"
 	"gorango/exchanges/domain/timeframe"
 	"gorango/exchanges/domain/types"
+	"time"
 )
 
 type BarFetcher interface {

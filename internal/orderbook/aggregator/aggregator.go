@@ -12,11 +12,11 @@ package aggregator
 
 import (
 	"cmp"
+	"gorango/exchanges/domain/types"
+	"gorango/exchanges/internal/orderbook/treap"
 	"math"
 	"slices"
 	"time"
-	"gorango/exchanges/domain/types"
-	"gorango/exchanges/internal/orderbook/treap"
 )
 
 // Trade represents a single trade

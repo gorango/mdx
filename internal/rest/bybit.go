@@ -8,13 +8,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"gorango/exchanges/domain/symbols"
+	"gorango/exchanges/domain/timeframe"
+	"gorango/exchanges/domain/types"
 	"io"
 	"net/http"
 	"strconv"
 	"time"
-	"gorango/exchanges/domain/symbols"
-	"gorango/exchanges/domain/timeframe"
-	"gorango/exchanges/domain/types"
 )
 
 type BybitClient struct {

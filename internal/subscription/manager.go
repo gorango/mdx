@@ -2,9 +2,9 @@ package subscription
 
 import (
 	"fmt"
-	"sync"
 	"gorango/exchanges/domain/types"
 	exchangeClient "gorango/exchanges/internal/ws"
+	"sync"
 )
 
 type Manager struct {

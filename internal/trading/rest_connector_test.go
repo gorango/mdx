@@ -2,10 +2,10 @@ package trading
 
 import (
 	"context"
-	"testing"
-	"time"
 	"gorango/exchanges/domain/types"
 	"gorango/exchanges/internal/rest"
+	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )

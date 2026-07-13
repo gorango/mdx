@@ -2,8 +2,8 @@ package aggregator
 
 import (
 	"fmt"
-	"sync"
 	"gorango/exchanges/domain/types"
+	"sync"
 )
 
 type Manager struct {

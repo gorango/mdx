@@ -4,14 +4,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"os"
-	"time"
 	"gorango/exchanges/domain/symbols"
 	"gorango/exchanges/domain/timeframe"
 	"gorango/exchanges/internal/cache"
 	"gorango/exchanges/internal/config"
 	"gorango/exchanges/internal/db"
 	"gorango/exchanges/internal/rest"
+	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 )

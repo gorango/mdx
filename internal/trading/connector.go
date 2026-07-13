@@ -2,8 +2,8 @@ package trading
 
 import (
 	"context"
-	"time"
 	"gorango/exchanges/domain/types"
+	"time"
 )
 
 type Connector interface {

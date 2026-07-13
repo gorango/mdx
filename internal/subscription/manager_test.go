@@ -2,9 +2,9 @@ package subscription
 
 import (
 	"context"
-	"testing"
 	"gorango/exchanges/domain/types"
 	exchange "gorango/exchanges/internal/ws"
+	"testing"
 )
 
 type mockClient struct {

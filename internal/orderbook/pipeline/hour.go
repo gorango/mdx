@@ -4,17 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
-	"os"
-	"path/filepath"
-	"strings"
-	"time"
 	"gorango/exchanges/domain/symbols"
 	"gorango/exchanges/domain/types"
 	"gorango/exchanges/internal/db"
 	"gorango/exchanges/internal/orderbook/aggregator"
 	"gorango/exchanges/internal/orderbook/api"
 	"gorango/exchanges/internal/orderbook/parquet"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 )
 
 func newLogger() *slog.Logger {

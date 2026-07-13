@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"gorango/exchanges/domain/types"
+	"gorango/exchanges/internal/ws"
 	"math"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
-	"gorango/exchanges/domain/types"
-	"gorango/exchanges/internal/ws"
 
 	"github.com/gorilla/websocket"
 )

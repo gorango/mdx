@@ -4,12 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log/slog"
-	"os"
-	"strconv"
 	"gorango/exchanges/domain/symbols"
 	"gorango/exchanges/domain/types"
 	"gorango/exchanges/internal/trading"
+	"log/slog"
+	"os"
+	"strconv"
 )
 
 func main() {

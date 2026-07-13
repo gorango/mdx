@@ -2,9 +2,9 @@ package trading
 
 import (
 	"context"
+	"gorango/exchanges/domain/types"
 	"sync"
 	"time"
-	"gorango/exchanges/domain/types"
 )
 
 type PaperConnector struct {

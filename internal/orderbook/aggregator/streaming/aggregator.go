@@ -13,11 +13,11 @@ package streaming
 import (
 	"cmp"
 	"fmt"
+	"gorango/exchanges/domain/types"
+	"gorango/exchanges/internal/orderbook/treap"
 	"math"
 	"slices"
 	"sync"
-	"gorango/exchanges/domain/types"
-	"gorango/exchanges/internal/orderbook/treap"
 )
 
 // Aggregator processes real-time streaming events into 1-minute bars

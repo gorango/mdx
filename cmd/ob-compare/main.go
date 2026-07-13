@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"gorango/exchanges/domain/types"
+	"gorango/exchanges/internal/db"
 	"log"
 	"math"
 	"os"
@@ -11,8 +13,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"gorango/exchanges/domain/types"
-	"gorango/exchanges/internal/db"
 
 	"github.com/joho/godotenv"
 )
