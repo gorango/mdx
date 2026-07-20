@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
@@ -75,6 +76,11 @@ func (c *CryptoHFTClient) DownloadParquet(exchange, symbol, date, hour, dataType
 		if err == nil {
 			break
 		}
+		if strings.Contains(err.Error(), "404") ||
+			strings.Contains(err.Error(), "400") ||
+			strings.Contains(err.Error(), "not available") {
+			break
+		}
 		time.Sleep(time.Duration(1<<retries) * time.Second)
 	}
 	if err != nil {
@@ -110,6 +116,9 @@ func (c *CryptoHFTClient) downloadWithRetry(url string) ([]byte, error) {
 	}
 	if resp.StatusCode() == http.StatusNotFound {
 		return nil, fmt.Errorf("404: data not available")
+	}
+	if resp.StatusCode() >= 400 && resp.StatusCode() < 500 {
+		return nil, fmt.Errorf("%d: data not available", resp.StatusCode())
 	}
 	if resp.StatusCode() != http.StatusOK {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode(), resp.Body())

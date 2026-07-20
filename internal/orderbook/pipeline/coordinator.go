@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"gorango/exchanges/domain/symbols"
 	"gorango/exchanges/internal/db"
@@ -9,19 +10,21 @@ import (
 	"gorango/exchanges/internal/orderbook/api"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 )
 
 // Config contains the pipeline configuration
 type Config struct {
-	Symbol     string
-	StartDate  time.Time
-	EndDate    time.Time
-	Exchange   string
-	APIKey     string
-	ResumeMode bool
-	DryRun     bool
-	OutputDir  string
+	Symbol          string
+	StartDate       time.Time
+	EndDate         time.Time
+	Exchange        string
+	APIKey          string
+	ResumeMode      bool
+	DryRun          bool
+	OutputDir       string
+	FundingCacheDir string
 }
 
 // Coordinator manages the hydration pipeline
@@ -50,20 +53,53 @@ func NewCoordinator(config Config, database *db.DB) *Coordinator {
 // would each carry their own treap, producing incorrect spread/depth data
 // at hour boundaries.
 func (c *Coordinator) Run(ctx context.Context) error {
-	bc := api.NewBinanceClient()
-	fundingPoints, err := bc.FetchFundingHistory(
-		symbols.CanonicalToExchange(c.config.Symbol, c.config.Exchange),
-		c.config.StartDate.Add(-8*time.Hour).UnixMilli(),
-		c.config.EndDate.Add(8*time.Hour).UnixMilli(),
-	)
-	if err != nil {
-		return fmt.Errorf("fetch funding history: %w", err)
-	}
-	c.logger.Info("Fetched funding history",
+	c.logger.Info("Fetching funding history",
 		"symbol", c.config.Symbol,
-		"points", len(fundingPoints),
 	)
 
+	var fundingPoints []api.FundingPoint
+
+	// Check funding cache first
+	if c.config.FundingCacheDir != "" {
+		cachePath := filepath.Join(c.config.FundingCacheDir, c.config.Symbol+".json")
+		if data, err := os.ReadFile(cachePath); err == nil {
+			if err := json.Unmarshal(data, &fundingPoints); err == nil && len(fundingPoints) > 0 {
+				c.logger.Info("Funding history loaded from cache",
+					"symbol", c.config.Symbol,
+					"points", len(fundingPoints),
+				)
+				goto afterFunding
+			}
+		}
+	}
+
+	{
+		bc := api.NewBinanceClient()
+		var err error
+		fundingPoints, err = bc.FetchFundingHistory(
+			symbols.CanonicalToExchange(c.config.Symbol, c.config.Exchange),
+			c.config.StartDate.Add(-8*time.Hour).UnixMilli(),
+			c.config.EndDate.Add(8*time.Hour).UnixMilli(),
+		)
+		if err != nil {
+			return fmt.Errorf("fetch funding history: %w", err)
+		}
+		c.logger.Info("Fetched funding history",
+			"symbol", c.config.Symbol,
+			"points", len(fundingPoints),
+		)
+
+		// Write to cache
+		if c.config.FundingCacheDir != "" {
+			cachePath := filepath.Join(c.config.FundingCacheDir, c.config.Symbol+".json")
+			if data, err := json.Marshal(fundingPoints); err == nil {
+				_ = os.MkdirAll(c.config.FundingCacheDir, 0755)
+				_ = os.WriteFile(cachePath, data, 0644)
+			}
+		}
+	}
+
+afterFunding:
 	hours := c.generateHours()
 	c.logger.Info("Starting pipeline",
 		"symbol", c.config.Symbol,
@@ -71,6 +107,23 @@ func (c *Coordinator) Run(ctx context.Context) error {
 		"end", c.config.EndDate.Format("2006-01-02"),
 		"hours", len(hours),
 	)
+
+	// Skip to earliest data in DB to avoid probing the API for pre-listing hours
+	if minTs, _, err := c.db.GetOrderbookBarRange(ctx, symbols.MapExchangeToDB(c.config.Exchange), c.config.Symbol); err == nil && minTs != nil {
+		cut := minTs.Truncate(time.Hour)
+		skipped := 0
+		for len(hours) > 0 && hours[0].Before(cut) {
+			hours = hours[1:]
+			skipped++
+		}
+		if skipped > 0 {
+			c.logger.Info("Skipped to first DB data",
+				"symbol", c.config.Symbol,
+				"skipped_hours", skipped,
+				"first_db_hour", cut.Format("2006-01-02T15:04"),
+			)
+		}
+	}
 
 	if c.config.ResumeMode {
 		hours = c.filterExisting(ctx, hours)
@@ -97,8 +150,10 @@ func (c *Coordinator) Run(ctx context.Context) error {
 	firstData := time.Time{}
 	lastData := time.Time{}
 	hadAny404 := false
+	hadExistingSkip := false
 
-	for _, hour := range hours {
+	for i := 0; i < len(hours); i++ {
+		hour := hours[i]
 		date := hour.Format("2006-01-02")
 		hourNum := hour.Hour()
 
@@ -117,14 +172,24 @@ func (c *Coordinator) Run(ctx context.Context) error {
 			skipped++
 			if result.DataNotAvailable {
 				hadAny404 = true
-				if totalBars == 0 && skipped%100 == 0 {
+				if totalBars == 0 {
+					nextDay := hour.Add(24 * time.Hour).Truncate(24 * time.Hour)
+					skipCount := 0
+					for i+1 < len(hours) && hours[i+1].Before(nextDay) {
+						i++
+						skipCount++
+					}
+					skipped += skipCount
+					processed += skipCount
 					c.logger.Warn("Skipping ahead — no data yet",
 						"symbol", c.config.Symbol,
 						"skipped", skipped,
 						"at", date,
+						"skip_day", true,
 					)
 				}
 			} else {
+				hadExistingSkip = true
 				c.logger.Debug("Hour skipped (already exists)",
 					"symbol", c.config.Symbol,
 					"date", date,
@@ -168,7 +233,7 @@ func (c *Coordinator) Run(ctx context.Context) error {
 		"first_data", firstStr,
 		"last_data", lastStr,
 	)
-	if totalBars == 0 && hadAny404 {
+	if totalBars == 0 && hadAny404 && !hadExistingSkip {
 		c.logger.Warn("No data found on API for symbol",
 			"symbol", c.config.Symbol,
 		)
