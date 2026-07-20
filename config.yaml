@@ -3,56 +3,7 @@ exchanges:
     enabled: true
     testnet: false
     symbols:
-      - BTC/USDT:PERP
-      - ETH/USDT:PERP
-      - XRP/USDT:PERP
-      - BNB/USDT:PERP
-      - SOL/USDT:PERP
-      - TRX/USDT:PERP
-      - DOGE/USDT:PERP
-      - ADA/USDT:PERP
-      - BCH/USDT:PERP
-      - HYPE/USDT:PERP
-      - XMR/USDT:PERP
-      - LINK/USDT:PERP
-      - XLM/USDT:PERP
-      - LTC/USDT:PERP
-      - AVAX/USDT:PERP
-      - HBAR/USDT:PERP
-      - ZEC/USDT:PERP
-      - SUI/USDT:PERP
-      - TON/USDT:PERP
-      - TAO/USDT:PERP
-      - DOT/USDT:PERP
-      - UNI/USDT:PERP
-      - AAVE/USDT:PERP
-      - NEAR/USDT:PERP
-      - ONDO/USDT:PERP
-      - POL/USDT:PERP
-      - QNT/USDT:PERP
-      - KAS/USDT:PERP
-      - MORPHO/USDT:PERP
-      - ATOM/USDT:PERP
-      - RENDER/USDT:PERP
-      - ENA/USDT:PERP
-      - ALGO/USDT:PERP
-      - APT/USDT:PERP
-      - FIL/USDT:PERP
-      - DEXE/USDT:PERP
-      - VET/USDT:PERP
-      - ARB/USDT:PERP
-      - JUP/USDT:PERP
-      - FET/USDT:PERP
-      - CAKE/USDT:PERP
-      - VIRTUAL/USDT:PERP
-      - PENGU/USDT:PERP
-      - STX/USDT:PERP
-      - DASH/USDT:PERP
-      - XTZ/USDT:PERP
-      - SEI/USDT:PERP
-      - CHZ/USDT:PERP
-      - SUN/USDT:PERP
-      - CRV/USDT:PERP
+      !include ../config/symbols.yaml
 
 flusher:
   interval_seconds: 30

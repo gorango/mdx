@@ -64,7 +64,6 @@ func (c *Coordinator) Run(ctx context.Context) error {
 		"points", len(fundingPoints),
 	)
 
-	// Generate hours to process
 	hours := c.generateHours()
 	c.logger.Info("Starting pipeline",
 		"symbol", c.config.Symbol,
@@ -73,14 +72,18 @@ func (c *Coordinator) Run(ctx context.Context) error {
 		"hours", len(hours),
 	)
 
-	// Filter already processed if resuming
 	if c.config.ResumeMode {
 		hours = c.filterExisting(ctx, hours)
-		c.logger.Info("Resume mode: filtered hours", "remaining", len(hours))
+		c.logger.Info("Resume mode: filtered hours",
+			"symbol", c.config.Symbol,
+			"remaining", len(hours),
+		)
 	}
 
 	if len(hours) == 0 {
-		c.logger.Info("No hours to process")
+		c.logger.Info("No hours to process",
+			"symbol", c.config.Symbol,
+		)
 		return nil
 	}
 
@@ -91,6 +94,9 @@ func (c *Coordinator) Run(ctx context.Context) error {
 	processed := 0
 	failed := 0
 	skipped := 0
+	firstData := time.Time{}
+	lastData := time.Time{}
+	hadAny404 := false
 
 	for _, hour := range hours {
 		date := hour.Format("2006-01-02")
@@ -102,20 +108,42 @@ func (c *Coordinator) Run(ctx context.Context) error {
 		if err != nil {
 			failed++
 			c.logger.Error("Hour failed",
+				"symbol", c.config.Symbol,
 				"date", date,
 				"hour", hourNum,
 				"error", err,
 			)
 		} else if result.Skipped {
 			skipped++
-			c.logger.Debug("Hour skipped",
-				"date", date,
-				"hour", hourNum,
-			)
+			if result.DataNotAvailable {
+				hadAny404 = true
+				if totalBars == 0 && skipped%100 == 0 {
+					c.logger.Warn("Skipping ahead — no data yet",
+						"symbol", c.config.Symbol,
+						"skipped", skipped,
+						"at", date,
+					)
+				}
+			} else {
+				c.logger.Debug("Hour skipped (already exists)",
+					"symbol", c.config.Symbol,
+					"date", date,
+					"hour", hourNum,
+				)
+			}
 		} else {
+			if totalBars == 0 {
+				firstData = hour
+				c.logger.Info("First data found",
+					"symbol", c.config.Symbol,
+					"at", firstData.Format("2006-01-02"),
+				)
+			}
+			lastData = hour
 			totalBars += result.BarsSaved
 			if processed%10 == 0 {
 				c.logger.Info("Progress",
+					"symbol", c.config.Symbol,
 					"processed", fmt.Sprintf("%d/%d", processed, len(hours)),
 					"bars", result.BarsSaved,
 					"total", totalBars,
@@ -124,29 +152,46 @@ func (c *Coordinator) Run(ctx context.Context) error {
 		}
 	}
 
+	firstStr := "never"
+	lastStr := "never"
+	if totalBars > 0 {
+		firstStr = firstData.Format("2006-01-02")
+		lastStr = lastData.Format("2006-01-02")
+	}
+
 	c.logger.Info("Pipeline complete",
+		"symbol", c.config.Symbol,
 		"processed", processed,
 		"failed", failed,
 		"skipped", skipped,
 		"total_bars", totalBars,
+		"first_data", firstStr,
+		"last_data", lastStr,
 	)
+	if totalBars == 0 && hadAny404 {
+		c.logger.Warn("No data found on API for symbol",
+			"symbol", c.config.Symbol,
+		)
+	}
 
 	return nil
 }
 
-// generateHours generates the list of hours to process
 func (c *Coordinator) generateHours() []time.Time {
 	return aggregator.GenerateHours(c.config.StartDate, c.config.EndDate)
 }
 
-// filterExisting removes hours that are already in the database
 func (c *Coordinator) filterExisting(ctx context.Context, hours []time.Time) []time.Time {
 	var filtered []time.Time
 	dbExchange := symbols.MapExchangeToDB(c.config.Exchange)
 	for _, hour := range hours {
 		exists, err := c.db.HourExists(ctx, dbExchange, c.config.Symbol, hour)
 		if err != nil {
-			c.logger.Warn("Failed to check hour exists", "hour", hour, "error", err)
+			c.logger.Warn("Failed to check hour exists",
+				"symbol", c.config.Symbol,
+				"hour", hour,
+				"error", err,
+			)
 			filtered = append(filtered, hour)
 		} else if !exists {
 			filtered = append(filtered, hour)

@@ -38,13 +38,14 @@ func main() {
 	}
 
 	var (
-		symbol    = flag.String("symbol", "", "Trading symbol (e.g., BTC/USDT:PERP)")
-		start     = flag.String("start", "", "Start datetime YYYY-MM-DD, YYYY-MM-DDTHH, or YYYY-MM-DDTHH:MM")
-		end       = flag.String("end", "", "End datetime YYYY-MM-DD, YYYY-MM-DDTHH, or YYYY-MM-DDTHH:MM")
-		exchange  = flag.String("exchange", "binance_futures", "Exchange name")
-		resume    = flag.Bool("resume", false, "Skip already processed hours")
-		dryRun    = flag.Bool("dry-run", false, "Skip DB insert, write bars to JSON files")
-		outputDir = flag.String("output-dir", "./hydrate-output", "Output directory for dry-run JSON files")
+		symbol       = flag.String("symbol", "", "Trading symbol (e.g., BTC/USDT:PERP)")
+		start        = flag.String("start", "", "Start datetime YYYY-MM-DD, YYYY-MM-DDTHH, or YYYY-MM-DDTHH:MM")
+		end          = flag.String("end", "", "End datetime YYYY-MM-DD, YYYY-MM-DDTHH, or YYYY-MM-DDTHH:MM")
+		exchange     = flag.String("exchange", "binance_futures", "Exchange name")
+		resume       = flag.Bool("resume", false, "Skip already processed hours")
+		dryRun       = flag.Bool("dry-run", false, "Skip DB insert, write bars to JSON files")
+		outputDir    = flag.String("output-dir", "./hydrate-output", "Output directory for dry-run JSON files")
+		fundingCache = flag.String("funding-cache", "", "Directory with pre-fetched funding history JSON files per symbol")
 	)
 
 	flag.Parse()
@@ -100,14 +101,15 @@ func main() {
 
 	// Create coordinator config
 	config := pipeline.Config{
-		Symbol:     canonicalSymbol,
-		StartDate:  startDate,
-		EndDate:    endDate,
-		Exchange:   *exchange,
-		APIKey:     apiKey,
-		ResumeMode: *resume,
-		DryRun:     *dryRun,
-		OutputDir:  *outputDir,
+		Symbol:          canonicalSymbol,
+		StartDate:       startDate,
+		EndDate:         endDate,
+		Exchange:        *exchange,
+		APIKey:          apiKey,
+		ResumeMode:      *resume,
+		DryRun:          *dryRun,
+		OutputDir:       *outputDir,
+		FundingCacheDir: *fundingCache,
 	}
 
 	// Create and run coordinator

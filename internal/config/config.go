@@ -1,11 +1,45 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
+	"regexp"
 
 	"gopkg.in/yaml.v3"
 )
+
+var includeRe = regexp.MustCompile(`(?m)^\s*!include\s+(\S+)\s*`)
+
+func resolveIncludes(path string, data []byte) ([]byte, error) {
+	dir := filepath.Dir(path)
+	return includeRe.ReplaceAllFunc(data, func(match []byte) []byte {
+		parts := includeRe.FindSubmatch(match)
+		if len(parts) < 2 {
+			return match
+		}
+		incPath := string(parts[1])
+		if !filepath.IsAbs(incPath) {
+			incPath = filepath.Join(dir, incPath)
+		}
+		incData, err := os.ReadFile(incPath)
+		if err != nil {
+			return match
+		}
+
+		indent := match[:len(match)-len(bytes.TrimLeft(match, " \t"))]
+		indentCopy := make([]byte, len(indent))
+		copy(indentCopy, indent)
+		lines := bytes.Split(incData, []byte("\n"))
+		for i, line := range lines {
+			if len(bytes.TrimSpace(line)) > 0 {
+				lines[i] = append(indentCopy, line...)
+			}
+		}
+		return bytes.Join(lines, []byte("\n"))
+	}), nil
+}
 
 type Config struct {
 	Exchanges ExchangesConfig `yaml:"exchanges"`
@@ -36,6 +70,10 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read config file: %w", err)
 	}
+	data, err = resolveIncludes(path, data)
+	if err != nil {
+		return nil, fmt.Errorf("resolve includes: %w", err)
+	}
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
@@ -53,6 +91,11 @@ func LoadExchanges(path string) (*ExchangesConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read config file: %w", err)
+	}
+
+	data, err = resolveIncludes(path, data)
+	if err != nil {
+		return nil, fmt.Errorf("resolve includes: %w", err)
 	}
 
 	var cfg struct {

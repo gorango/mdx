@@ -28,7 +28,7 @@ func (db *DB) InsertPriceBars(ctx context.Context, exchange, symbol string, bars
 
 	tmpTable := fmt.Sprintf("tmp_price_bars_%d", time.Now().UnixNano())
 
-	_, err = tx.Exec(ctx, fmt.Sprintf(`CREATE TEMP TABLE %s (LIKE price_bars INCLUDING ALL)`, tmpTable))
+	_, err = tx.Exec(ctx, fmt.Sprintf(`CREATE TEMP TABLE %s (LIKE price_bars INCLUDING DEFAULTS)`, tmpTable))
 	if err != nil {
 		return fmt.Errorf("create temp table: %w", err)
 	}
@@ -133,7 +133,7 @@ func (db *DB) InsertOrderbookBars(ctx context.Context, exchange, symbol string, 
 
 	tmpTable := fmt.Sprintf("tmp_orderbook_bars_%d", time.Now().UnixNano())
 
-	_, err = tx.Exec(ctx, fmt.Sprintf(`CREATE TEMP TABLE %s (LIKE orderbook_bars INCLUDING ALL)`, tmpTable))
+	_, err = tx.Exec(ctx, fmt.Sprintf(`CREATE TEMP TABLE %s (LIKE orderbook_bars INCLUDING DEFAULTS)`, tmpTable))
 	if err != nil {
 		return fmt.Errorf("create temp table: %w", err)
 	}
@@ -372,6 +372,21 @@ func (db *DB) GetDistinctSymbols(ctx context.Context, exchange string) ([]string
 		symbols = append(symbols, sym)
 	}
 	return symbols, rows.Err()
+}
+
+func (db *DB) GetOrderbookBarRange(ctx context.Context, exchange, symbol string) (minTime, maxTime *time.Time, err error) {
+	var min, max time.Time
+	err = db.pool.QueryRow(ctx, `
+		SELECT MIN(timestamp), MAX(timestamp) FROM orderbook_bars
+		WHERE exchange = $1 AND symbol = $2
+	`, exchange, symbol).Scan(&min, &max)
+	if err != nil {
+		return nil, nil, fmt.Errorf("query orderbook bar range: %w", err)
+	}
+	if min.IsZero() {
+		return nil, nil, nil
+	}
+	return &min, &max, nil
 }
 
 func (db *DB) BackfillFundingHistory(ctx context.Context, symbol string, fundingPoints []api.FundingPoint, startTime, endTime *time.Time, batchSize int) (updated int, errors int) {

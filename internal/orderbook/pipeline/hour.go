@@ -27,18 +27,17 @@ func isDuplicateKeyError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "23505")
 }
 
-// HourResult contains the outcome of processing one hour
 type HourResult struct {
-	Date         string
-	Hour         int
-	BarsSaved    int
-	TradesCount  int
-	BytesFetched int64
-	Skipped      bool
-	Error        error
+	Date             string
+	Hour             int
+	BarsSaved        int
+	TradesCount      int
+	BytesFetched     int64
+	Skipped          bool
+	DataNotAvailable bool
+	Error            error
 }
 
-// HourProcessor processes a single hour of data
 type HourProcessor struct {
 	apiClient       *api.CryptoHFTClient
 	db              *db.DB
@@ -49,10 +48,9 @@ type HourProcessor struct {
 	agg             *aggregator.Aggregator
 	dryRun          bool
 	outputDir       string
-	prevFundingRate *float64 // Persists funding rate state across hour boundaries
+	prevFundingRate *float64
 }
 
-// NewHourProcessor creates a new hour processor
 func NewHourProcessor(apiKey, symbol, exchange string, database *db.DB, fundingHistory []api.FundingPoint) *HourProcessor {
 	return &HourProcessor{
 		apiClient:      api.NewCryptoHFTClient(apiKey),
@@ -65,18 +63,15 @@ func NewHourProcessor(apiKey, symbol, exchange string, database *db.DB, fundingH
 	}
 }
 
-// SetFundingHistory updates the funding history for this processor
 func (p *HourProcessor) SetFundingHistory(fundingHistory []api.FundingPoint) {
 	p.fundingHistory = fundingHistory
 }
 
-// SetDryRun enables dry-run mode with output directory
 func (p *HourProcessor) SetDryRun(dryRun bool, outputDir string) {
 	p.dryRun = dryRun
 	p.outputDir = outputDir
 }
 
-// Process processes one hour of data
 func (p *HourProcessor) Process(ctx context.Context, date string, hour int) (*HourResult, error) {
 	hourStr := fmt.Sprintf("%02d", hour)
 	result := &HourResult{
@@ -84,7 +79,6 @@ func (p *HourProcessor) Process(ctx context.Context, date string, hour int) (*Ho
 		Hour: hour,
 	}
 
-	// Check if hour already processed (skip in dry-run mode since we're not writing to DB)
 	if !p.dryRun {
 		hourTime, _ := time.ParseInLocation("2006-01-02T15:04:05", date+"T"+hourStr+":00:00", time.UTC)
 		dbExchange := symbols.MapExchangeToDB(p.exchange)
@@ -94,9 +88,9 @@ func (p *HourProcessor) Process(ctx context.Context, date string, hour int) (*Ho
 		}
 		if exists {
 			p.logger.Debug("Hour already exists, skipping",
+				"symbol", p.symbol,
 				"date", date,
 				"hour", hour,
-				"hourTime", hourTime.Format(time.RFC3339),
 			)
 			result.Skipped = true
 			return result, nil
@@ -104,23 +98,24 @@ func (p *HourProcessor) Process(ctx context.Context, date string, hour int) (*Ho
 	}
 
 	p.logger.Debug("Processing hour",
+		"symbol", p.symbol,
 		"date", date,
 		"hour", hour,
 	)
 
-	// Use shared aggregator (treap state persists across hours)
 	agg := p.agg
 
-	// Process trades first with the aggregator
 	tradesCount, err := p.processTrades(date, hourStr, agg)
 	if err != nil {
 		if api.IsNotAvailable(err) {
 			p.logger.Error("Data not available (404), skipping hour",
+				"symbol", p.symbol,
 				"date", date,
 				"hour", hour,
 				"error", err,
 			)
 			result.Skipped = true
+			result.DataNotAvailable = true
 			return result, nil
 		}
 		return nil, fmt.Errorf("process trades: %w", err)
@@ -128,37 +123,32 @@ func (p *HourProcessor) Process(ctx context.Context, date string, hour int) (*Ho
 	result.TradesCount = tradesCount
 
 	p.logger.Debug("Trades processed",
+		"symbol", p.symbol,
 		"date", date,
 		"hour", hour,
 		"trades", tradesCount,
 	)
 
-	// Process optional OI
 	if err := p.processOpenInterest(date, hourStr, agg); err != nil {
-		// OI is optional, don't fail
 	}
 
-	// Process optional liquidations
 	liqSucceeded := false
 	if err := p.processLiquidations(date, hourStr, agg); err != nil {
-		// Liquidations are optional, don't fail
 	} else {
 		liqSucceeded = true
 	}
 
-	// Process orderbook
 	if err := p.processOrderBook(date, hourStr, agg); err != nil {
 		p.logger.Debug("Orderbook error (non-fatal)",
+			"symbol", p.symbol,
 			"date", date,
 			"hour", hour,
 			"error", err,
 		)
 	}
 
-	// Finalize and save
 	bars := agg.Finalize(liqSucceeded)
 
-	// Deduplicate by timestamp (keep first occurrence)
 	if len(bars) > 1 {
 		seen := make(map[int64]bool)
 		deduped := bars[:0]
@@ -170,6 +160,7 @@ func (p *HourProcessor) Process(ctx context.Context, date string, hour int) (*Ho
 		}
 		if len(deduped) < len(bars) {
 			p.logger.Debug("Deduplicated bars",
+				"symbol", p.symbol,
 				"date", date,
 				"hour", hour,
 				"before", len(bars),
@@ -180,6 +171,7 @@ func (p *HourProcessor) Process(ctx context.Context, date string, hour int) (*Ho
 	}
 
 	p.logger.Debug("Finalized bars",
+		"symbol", p.symbol,
 		"date", date,
 		"hour", hour,
 		"barCount", len(bars),
@@ -195,13 +187,13 @@ func (p *HourProcessor) Process(ctx context.Context, date string, hour int) (*Ho
 		} else {
 			dbExchange := symbols.MapExchangeToDB(p.exchange)
 			if err := p.db.InsertOrderbookBars(ctx, dbExchange, p.symbol, bars); err != nil {
-				// Handle duplicate key error gracefully - another worker already inserted
 				if isDuplicateKeyError(err) {
 					result.Skipped = true
 					result.BarsSaved = 0
 					return result, nil
 				}
 				p.logger.Debug("Insert error",
+					"symbol", p.symbol,
 					"date", date,
 					"hour", hour,
 					"error", err.Error(),
@@ -214,6 +206,7 @@ func (p *HourProcessor) Process(ctx context.Context, date string, hour int) (*Ho
 	result.BarsSaved = len(bars)
 
 	p.logger.Debug("Hour complete",
+		"symbol", p.symbol,
 		"date", date,
 		"hour", hour,
 		"trades", tradesCount,
@@ -237,22 +230,19 @@ func (p *HourProcessor) processTrades(date, hourStr string, agg *aggregator.Aggr
 	}
 	defer reader.Close()
 
-	// Calculate hour time range in UTC
 	hourTime, _ := time.ParseInLocation("2006-01-02T15:04:05", date+"T"+hourStr+":00:00", time.UTC)
 	hourStartMs := hourTime.UnixMilli()
-	hourEndMs := hourStartMs + 3600000 // 1 hour in ms
+	hourEndMs := hourStartMs + 3600000
 
 	var count int
 	err = reader.StreamTrades(func(t parquet.Trade) error {
-		// Filter to only include trades within this hour's UTC range
-		// This prevents duplicate timestamps at hour boundaries
 		if t.TradeTime >= hourStartMs && t.TradeTime < hourEndMs {
 			agg.ProcessTrade(aggregator.Trade{
 				Timestamp:    t.TradeTime,
 				Price:        t.Price,
 				Quantity:     t.Quantity,
 				IsBuyerMaker: t.IsBuyerMaker,
-				TradeCount:   1, // Each parquet row represents 1 trade
+				TradeCount:   1,
 			})
 			count++
 		}
@@ -405,11 +395,13 @@ func (p *HourProcessor) processFundingHistory(bars []types.OrderbookBar) []types
 		missingPct := float64(missing) / float64(len(bars)) * 100
 		if p.logger != nil {
 			p.logger.Debug("Funding rate assignment",
+				"symbol", p.symbol,
 				"date", bars[0].Timestamp,
 				"missing_pct", missingPct,
 			)
 			if missingPct > 50 {
 				p.logger.Warn("High percentage of bars missing funding rate",
+					"symbol", p.symbol,
 					"missing_pct", missingPct,
 					"total", len(bars),
 				)
@@ -438,6 +430,7 @@ func (p *HourProcessor) writeBarsToJSON(date, hourStr string, bars []types.Order
 	}
 
 	p.logger.Debug("Wrote bars to JSON",
+		"symbol", p.symbol,
 		"path", path,
 		"barCount", len(bars),
 	)
