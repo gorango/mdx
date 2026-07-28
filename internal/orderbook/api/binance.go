@@ -55,6 +55,19 @@ func (c *BinanceClient) FetchFundingHistory(symbol string, startTime, endTime in
 	return allPoints, nil
 }
 
+func (c *BinanceClient) FetchLatestFundingRate(symbol string) (FundingPoint, error) {
+	now := time.Now().UnixMilli()
+	dayAgo := now - 24*3600000
+	points, err := c.FetchFundingHistory(symbol, dayAgo, now)
+	if err != nil {
+		return FundingPoint{}, err
+	}
+	if len(points) == 0 {
+		return FundingPoint{}, fmt.Errorf("no funding rates found for %s", symbol)
+	}
+	return points[len(points)-1], nil
+}
+
 func (c *BinanceClient) fetchFundingPage(symbol string, startTime, endTime int64, limit int) ([]FundingPoint, error) {
 	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/fundingRate?symbol=%s&startTime=%d&endTime=%d&limit=%d",
 		symbol, startTime, endTime, limit)

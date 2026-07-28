@@ -203,12 +203,11 @@ func (c *Client) buildPublicStreams(symbols []string) []string {
 }
 
 func (c *Client) buildMarketStreams(symbols []string) []string {
-	streams := make([]string, 0, len(symbols)*3)
+	streams := make([]string, 0, len(symbols)*2)
 	for _, symbol := range symbols {
 		sym := c.toExchangeSymbol(symbol)
 		streams = append(streams,
 			sym+"@aggTrade",
-			sym+"@markPrice@1s",
 			sym+"@forceOrder",
 		)
 	}

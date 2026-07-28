@@ -12,10 +12,12 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"gorango/exchanges/domain/symbols"
 	"gorango/exchanges/domain/types"
 	"gorango/exchanges/internal/config"
 	"gorango/exchanges/internal/db"
 	"gorango/exchanges/internal/orderbook/aggregator/streaming"
+	"gorango/exchanges/internal/orderbook/api"
 	"gorango/exchanges/internal/orderbook/flusher"
 	"gorango/exchanges/internal/pubsub"
 	"gorango/exchanges/internal/rest"
@@ -25,18 +27,25 @@ import (
 	"gorango/exchanges/internal/ws/hyperliquid"
 )
 
-type statusHandler struct{}
+type statusHandler struct {
+	aggMgr *streaming.Manager
+}
 
 func (h *statusHandler) OnStatusChange(name string, status exchange.ConnectionStatus) {
+	connected := status == exchange.ConnectionStatusConnected
+	if h.aggMgr != nil {
+		h.aggMgr.SetLiquidationFeedAvailable(connected)
+	}
+
 	switch status {
 	case exchange.ConnectionStatusConnecting:
-		fmt.Printf("[%s] Connection status: connecting\n", name)
+		fmt.Printf("[%s] Connection status: connecting, liq_covered=%v\n", name, connected)
 	case exchange.ConnectionStatusConnected:
-		fmt.Printf("[%s] Connection status: connected\n", name)
+		fmt.Printf("[%s] Connection status: connected, liq_covered=%v\n", name, connected)
 	case exchange.ConnectionStatusReconnecting:
-		fmt.Printf("[%s] Connection status: reconnecting\n", name)
+		fmt.Printf("[%s] Connection status: reconnecting, liq_covered=%v\n", name, connected)
 	case exchange.ConnectionStatusDisconnected:
-		fmt.Printf("[%s] Connection status: disconnected\n", name)
+		fmt.Printf("[%s] Connection status: disconnected, liq_covered=%v\n", name, connected)
 	}
 }
 
@@ -111,6 +120,7 @@ func main() {
 
 	if cfg.Exchanges.Binance.Enabled {
 		go startOpenInterestPoller(ctx, cfg, aggMgr)
+		go startFundingRatePoller(ctx, cfg, aggMgr)
 	}
 
 	handler := func(event types.Event) {
@@ -125,7 +135,7 @@ func main() {
 		}
 	}
 
-	connHandler := &statusHandler{}
+	connHandler := &statusHandler{aggMgr: aggMgr}
 
 	var wg sync.WaitGroup
 
@@ -216,6 +226,54 @@ func startOpenInterestPoller(ctx context.Context, cfg *config.Config, aggMgr *st
 					fmt.Printf("[OI] Error processing event for %s: %v\n", symbol, err)
 				}
 			}
+		}
+	}
+}
+
+func startFundingRatePoller(ctx context.Context, cfg *config.Config, aggMgr *streaming.Manager) {
+	bc := api.NewBinanceClient()
+	lastRate := make(map[string]float64)
+
+	poll := func() {
+		for _, symbol := range cfg.Exchanges.Binance.Symbols {
+			exchangeSymbol := symbols.CanonicalToExchange(symbol, "binance_futures")
+			point, err := bc.FetchLatestFundingRate(exchangeSymbol)
+			if err != nil {
+				fmt.Printf("[FR] Failed to fetch for %s: %v\n", symbol, err)
+				continue
+			}
+
+			if prev, ok := lastRate[symbol]; ok && point.Rate == prev {
+				continue
+			}
+			lastRate[symbol] = point.Rate
+
+			event := types.Event{
+				Type:      types.EventTypeFundingRate,
+				Symbol:    symbol,
+				Timestamp: time.Now().UnixMilli(),
+				Data: types.FundingRate{
+					Rate: point.Rate,
+				},
+			}
+
+			if err := aggMgr.ProcessEvent(event); err != nil {
+				fmt.Printf("[FR] Error processing event for %s: %v\n", symbol, err)
+			}
+		}
+	}
+
+	poll()
+
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			poll()
 		}
 	}
 }

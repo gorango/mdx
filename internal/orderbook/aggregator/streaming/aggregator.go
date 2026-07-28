@@ -312,6 +312,11 @@ func (a *Aggregator) buildBar(b *BarBuilder, liqCovered bool) types.OrderbookBar
 			delta := last - *a.prevOI
 			oiChange = &delta
 		}
+	} else if a.prevOI != nil {
+		oi := *a.prevOI
+		oiValue = &oi
+		zero := 0.0
+		oiChange = &zero
 	}
 
 	if len(b.FundingRateSamples) > 0 {
@@ -321,9 +326,13 @@ func (a *Aggregator) buildBar(b *BarBuilder, liqCovered bool) types.OrderbookBar
 			delta := fr - *a.prevFunding
 			fundingRateChange = &delta
 		}
+	} else if a.prevFunding != nil {
+		fr := *a.prevFunding
+		fundingRate = &fr
+		zero := 0.0
+		fundingRateChange = &zero
 	}
 
-	// Only update prev state if current bar has values (maintains state across gaps)
 	if oiValue != nil {
 		a.prevOI = oiValue
 	}
