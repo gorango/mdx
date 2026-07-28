@@ -124,6 +124,16 @@ sql-bar-outliers START='' END='':
 sql-ob-progress START='' END='':
 	@bash -c 'if [ -z "{{START}}" ] && [ -z "{{END}}" ]; then bash scripts/sql/ob_progress.sh; elif [ -z "{{END}}" ]; then bash scripts/sql/ob_progress.sh {{START}}; else bash scripts/sql/ob_progress.sh {{START}} {{END}}; fi'
 
+# --- USDT.D ---
+
+# Fetch/update USDT.D — incremental by default (only fetches missing days).
+# Pass a number to force-refetch that many days (e.g. 365 for full).
+usdtd-fetch *FLAGS='':
+	uv run scripts/fetch-usdtd.py {{FLAGS}}
+
+usdtd-recompute:
+	uv run scripts/fetch-usdtd.py --no-fetch
+
 # --- Dev shortcuts ---
 
 dev-pc:
