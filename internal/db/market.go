@@ -125,6 +125,11 @@ func (db *DB) InsertOrderbookBars(ctx context.Context, exchange, symbol string, 
 		return nil
 	}
 
+	bars = deduplicateOrderbookBars(bars)
+	if len(bars) == 0 {
+		return nil
+	}
+
 	tx, err := db.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -531,4 +536,27 @@ func (db *DB) BackfillOpenInterestChange(ctx context.Context, symbolFilter *stri
 	}
 
 	return updated, errors
+}
+
+// deduplicateOrderbookBars removes bars with duplicate timestamps, keeping the
+// bar with the highest trade_count for each timestamp. This prevents PostgreSQL's
+// "ON CONFLICT DO UPDATE command cannot affect row a second time" error when
+// the same minute-bar is accumulated multiple times in the flusher buffer.
+func deduplicateOrderbookBars(bars []types.OrderbookBar) []types.OrderbookBar {
+	if len(bars) < 2 {
+		return bars
+	}
+	best := make(map[int64]types.OrderbookBar)
+	for _, b := range bars {
+		existing, ok := best[b.Timestamp]
+		if !ok || b.TradeCount > existing.TradeCount ||
+			(b.TradeCount == existing.TradeCount && b.AvgSpread > 0 && existing.AvgSpread == 0) {
+			best[b.Timestamp] = b
+		}
+	}
+	result := make([]types.OrderbookBar, 0, len(best))
+	for _, b := range best {
+		result = append(result, b)
+	}
+	return result
 }
