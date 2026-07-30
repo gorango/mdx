@@ -43,6 +43,7 @@ func main() {
 		end          = flag.String("end", "", "End datetime YYYY-MM-DD, YYYY-MM-DDTHH, or YYYY-MM-DDTHH:MM")
 		exchange     = flag.String("exchange", "binance_futures", "Exchange name")
 		resume       = flag.Bool("resume", false, "Skip already processed hours")
+		overwrite    = flag.Bool("overwrite", false, "Re-process and overwrite existing bars")
 		dryRun       = flag.Bool("dry-run", false, "Skip DB insert, write bars to JSON files")
 		outputDir    = flag.String("output-dir", "./hydrate-output", "Output directory for dry-run JSON files")
 		fundingCache = flag.String("funding-cache", "", "Directory with pre-fetched funding history JSON files per symbol")
@@ -58,6 +59,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  --symbol BTC/USDT:SPOT  (spot)\n")
 		fmt.Fprintf(os.Stderr, "  --symbol BTC/USDT:PERP --start 2026-04-14 --end 2026-04-14  (full day)\n")
 		fmt.Fprintf(os.Stderr, "  --symbol BTC/USDT:PERP --start 2026-04-14T10 --end 2026-04-14T12  (hours)\n")
+		fmt.Fprintf(os.Stderr, "  --symbol BTC/USDT:PERP --overwrite --start 2026-04-14T10 --end 2026-04-14T12  (reprocess)\n")
 		fmt.Fprintf(os.Stderr, "  --symbol BTC/USDT:PERP --start 2026-04-14T10:18 --end 2026-04-14T10:56  (sub-hour)\n")
 		flag.PrintDefaults()
 		os.Exit(1)
@@ -107,6 +109,7 @@ func main() {
 		Exchange:        *exchange,
 		APIKey:          apiKey,
 		ResumeMode:      *resume,
+		Overwrite:       *overwrite,
 		DryRun:          *dryRun,
 		OutputDir:       *outputDir,
 		FundingCacheDir: *fundingCache,

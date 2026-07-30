@@ -49,9 +49,10 @@ type HourProcessor struct {
 	dryRun          bool
 	outputDir       string
 	prevFundingRate *float64
+	overwrite       bool
 }
 
-func NewHourProcessor(apiKey, symbol, exchange string, database *db.DB, fundingHistory []api.FundingPoint) *HourProcessor {
+func NewHourProcessor(apiKey, symbol, exchange string, database *db.DB, fundingHistory []api.FundingPoint, overwrite bool) *HourProcessor {
 	return &HourProcessor{
 		apiClient:      api.NewCryptoHFTClient(apiKey),
 		db:             database,
@@ -60,6 +61,7 @@ func NewHourProcessor(apiKey, symbol, exchange string, database *db.DB, fundingH
 		logger:         newLogger(),
 		fundingHistory: fundingHistory,
 		agg:            aggregator.New(),
+		overwrite:      overwrite,
 	}
 }
 
@@ -79,7 +81,7 @@ func (p *HourProcessor) Process(ctx context.Context, date string, hour int) (*Ho
 		Hour: hour,
 	}
 
-	if !p.dryRun {
+	if !p.dryRun && !p.overwrite {
 		hourTime, _ := time.ParseInLocation("2006-01-02T15:04:05", date+"T"+hourStr+":00:00", time.UTC)
 		dbExchange := symbols.MapExchangeToDB(p.exchange)
 		exists, err := p.db.HourExists(ctx, dbExchange, p.symbol, hourTime)
@@ -186,6 +188,13 @@ func (p *HourProcessor) Process(ctx context.Context, date string, hour int) (*Ho
 			}
 		} else {
 			dbExchange := symbols.MapExchangeToDB(p.exchange)
+			if p.overwrite {
+				hourTime, _ := time.ParseInLocation("2006-01-02T15:04:05", date+"T"+hourStr+":00:00", time.UTC)
+				hourEnd := hourTime.Add(time.Hour)
+				if _, err := p.db.DeleteOrderbookBars(ctx, dbExchange, p.symbol, &hourTime, &hourEnd); err != nil {
+					return nil, fmt.Errorf("delete existing bars: %w", err)
+				}
+			}
 			if err := p.db.InsertOrderbookBars(ctx, dbExchange, p.symbol, bars); err != nil {
 				if isDuplicateKeyError(err) {
 					result.Skipped = true

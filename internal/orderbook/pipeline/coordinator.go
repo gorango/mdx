@@ -22,6 +22,7 @@ type Config struct {
 	Exchange        string
 	APIKey          string
 	ResumeMode      bool
+	Overwrite       bool
 	DryRun          bool
 	OutputDir       string
 	FundingCacheDir string
@@ -140,7 +141,7 @@ afterFunding:
 		return nil
 	}
 
-	processor := NewHourProcessor(c.config.APIKey, c.config.Symbol, c.config.Exchange, c.db, fundingPoints)
+	processor := NewHourProcessor(c.config.APIKey, c.config.Symbol, c.config.Exchange, c.db, fundingPoints, c.config.Overwrite)
 	processor.SetDryRun(c.config.DryRun, c.config.OutputDir)
 
 	totalBars := 0

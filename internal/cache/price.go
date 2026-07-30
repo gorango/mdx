@@ -31,6 +31,11 @@ type PriceCache struct {
 	logger       *slog.Logger
 	requestGroup singleflight.Group
 	zipEnabled   bool
+	overwrite    bool
+}
+
+func (c *PriceCache) SetOverwrite(v bool) {
+	c.overwrite = v
 }
 
 var (
@@ -97,7 +102,7 @@ func (c *PriceCache) GetHistory(ctx context.Context, symbol string, targetTf tim
 		return bars, nil
 	}
 
-	if c.db != nil {
+	if c.db != nil && !c.overwrite {
 		bars, err := c.db.QueryPriceBarsGrouped(ctx, c.exchangeID, canonical, effectiveStart, effectiveEnd, targetTf)
 		if err == nil && len(bars) > 0 {
 			tfMinutes := targetTf.Ms / (60 * 1000)
@@ -180,7 +185,7 @@ func (c *PriceCache) getHistory1m(ctx context.Context, canonical string, effecti
 		return filterBarsByTime(cachedBars, effectiveStart, effectiveEnd), nil
 	}
 
-	if c.db != nil {
+	if c.db != nil && !c.overwrite {
 		bars, err := c.db.QueryPriceBarsGrouped(ctx, c.exchangeID, canonical, effectiveStart, effectiveEnd, timeframe.TF1m)
 		if err == nil && len(bars) > 0 {
 			if isDataComplete(bars, effectiveStart, effectiveEnd, 1) {
@@ -307,21 +312,26 @@ func (c *PriceCache) fetch1mData(ctx context.Context, symbol string, start, end 
 	}
 
 	var existingBars []types.Bar
-	if c.db != nil {
-		var dbErr error
-		existingBars, dbErr = c.db.QueryPriceBars(ctx, c.exchangeID, symbol, start, end)
-		if dbErr != nil {
-			c.logger.Warn("db query error", "symbol", symbol, "err", dbErr)
+	var ranges []struct{ Start, End time.Time }
+
+	if c.overwrite {
+		// Overwrite mode: re-fetch the full range, skip existing data
+		ranges = []struct{ Start, End time.Time }{{Start: start, End: end}}
+	} else {
+		if c.db != nil {
+			var dbErr error
+			existingBars, dbErr = c.db.QueryPriceBars(ctx, c.exchangeID, symbol, start, end)
+			if dbErr != nil {
+				c.logger.Warn("db query error", "symbol", symbol, "err", dbErr)
+			}
 		}
+		SortBars(existingBars)
+		existingBars = filterBarsByTime(existingBars, start, end)
+		ranges = findMissingDayRanges(getDaysWithData(existingBars), start, end)
 	}
 
-	SortBars(existingBars)
-	existingBars = filterBarsByTime(existingBars, start, end)
-
 	if c.restClient != nil {
-		daysWithData := getDaysWithData(existingBars)
-		missingRanges := findMissingDayRanges(daysWithData, start, end)
-		for _, r := range missingRanges {
+		for _, r := range ranges {
 			fetchEnd := end
 			if r.End.Before(end) {
 				fetchEnd = r.End
@@ -334,6 +344,9 @@ func (c *PriceCache) fetch1mData(ctx context.Context, symbol string, start, end 
 					fetched := filterBarsByTime(bars, r.Start, fetchEnd)
 					if len(fetched) > 0 {
 						if c.db != nil {
+							if c.overwrite {
+								c.deletePriceBarsForRange(ctx, symbol, fetched[0].Time, fetched[len(fetched)-1].Time.Add(time.Minute))
+							}
 							if insertErr := c.db.InsertPriceBars(ctx, c.exchangeID, symbol, fetched); insertErr != nil {
 								c.logger.Error("db insert error", "symbol", symbol, "err", insertErr)
 							}
@@ -350,6 +363,9 @@ func (c *PriceCache) fetch1mData(ctx context.Context, symbol string, start, end 
 					}
 					if len(fetched) > 0 {
 						if c.db != nil {
+							if c.overwrite {
+								c.deletePriceBarsForRange(ctx, symbol, fetched[0].Time, fetched[len(fetched)-1].Time.Add(time.Minute))
+							}
 							if insertErr := c.db.InsertPriceBars(ctx, c.exchangeID, symbol, fetched); insertErr != nil {
 								c.logger.Error("db insert error", "symbol", symbol, "err", insertErr)
 							}
@@ -365,6 +381,16 @@ func (c *PriceCache) fetch1mData(ctx context.Context, symbol string, start, end 
 	}
 
 	return filterBarsByTime(existingBars, start, end), nil
+}
+
+func (c *PriceCache) deletePriceBarsForRange(ctx context.Context, symbol string, rangeStart, rangeEnd time.Time) {
+	if d, ok := c.db.(*db.DB); ok {
+		s := rangeStart
+		e := rangeEnd
+		if _, err := d.DeletePriceBars(ctx, c.exchangeID, symbol, &s, &e); err != nil {
+			c.logger.Error("delete price bars", "symbol", symbol, "err", err)
+		}
+	}
 }
 
 func (c *PriceCache) backfillConcurrently(ctx context.Context, symbol string, gapStart, gapEnd time.Time) ([]types.Bar, error) {

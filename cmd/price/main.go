@@ -26,6 +26,7 @@ func main() {
 	showStats := flag.Bool("stats", false, "Show cache statistics")
 	project := flag.String("project", "", "Project bars to higher timeframe (e.g., 1h, 1d)")
 	count := flag.Int("count", 0, "Limit number of bars returned")
+	overwrite := flag.Bool("overwrite", false, "Re-fetch and overwrite existing bars")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -53,6 +54,7 @@ func main() {
 
 	restClient := createRESTClient(*exchange)
 	priceCache := cache.NewPriceCache(*exchange, dbConn, restClient, nil)
+	priceCache.SetOverwrite(*overwrite)
 
 	if *showStats {
 		stats := priceCache.GetMemoryStats()
