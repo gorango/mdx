@@ -84,8 +84,12 @@ trade-order MODE SYMBOL SIDE AMOUNT *PRICE:
 
 # --- CLI: Stream ---
 
-stream:
-	go run ./cmd/stream -config config.yaml
+stream *BACKFILL='':
+	@if [ "{{BACKFILL}}" = "backfill" ]; then \
+	    go run ./cmd/stream -config config.yaml -backfill-ob; \
+	else \
+	    go run ./cmd/stream -config config.yaml; \
+	fi
 
 ob-hydrate SYMBOL START END:
 	go run ./cmd/ob-hydrate \

@@ -8,17 +8,20 @@ import (
 	"math"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
+	"gorango/exchanges/domain/symbols"
 	"gorango/exchanges/domain/types"
 	"gorango/exchanges/internal/cache"
 	"gorango/exchanges/internal/config"
 	"gorango/exchanges/internal/db"
 	"gorango/exchanges/internal/orderbook/aggregator/streaming"
 	"gorango/exchanges/internal/orderbook/flusher"
+	"gorango/exchanges/internal/orderbook/pipeline"
 	"gorango/exchanges/internal/pubsub"
 	"gorango/exchanges/internal/rest"
 	exchange "gorango/exchanges/internal/ws"
@@ -42,6 +45,8 @@ type Streamer struct {
 	handler     types.EventHandler
 	logger      *slog.Logger
 
+	backfillOB bool
+
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -52,6 +57,7 @@ type Options struct {
 	NatsURL    string
 	Symbols    []string
 	Logger     *slog.Logger
+	BackfillOB bool
 }
 
 func New(opts Options) (*Streamer, error) {
@@ -123,6 +129,7 @@ func New(opts Options) (*Streamer, error) {
 		aggMgr:     aggMgr,
 		flusher:    flusher,
 		priceCache: priceCache,
+		backfillOB: opts.BackfillOB,
 		clients:    make(map[string]exchange.Client),
 		logger:     opts.Logger,
 		ctx:        ctx,
@@ -147,6 +154,7 @@ func (s *Streamer) Start() error {
 	s.startFlusherTicker()
 	s.startOpenInterestPoller()
 	s.startExchangeClients()
+	s.startOBBackfill()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -467,6 +475,92 @@ func (h *statusHandler) OnStatusChange(name string, status exchange.ConnectionSt
 		fmt.Printf("[%s] Connection status: reconnecting\n", name)
 	case exchange.ConnectionStatusDisconnected:
 		fmt.Printf("[%s] Connection status: disconnected\n", name)
+	}
+}
+
+func (s *Streamer) startOBBackfill() {
+	if !s.backfillOB {
+		return
+	}
+	if !s.cfg.Exchanges.Binance.Enabled {
+		return
+	}
+
+	go func() {
+		now := time.Now()
+		next := now.Truncate(time.Hour).Add(time.Hour)
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-time.After(time.Until(next)):
+		}
+
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+
+		for {
+			s.runOBBackfill()
+
+			select {
+			case <-s.ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+}
+
+func (s *Streamer) runOBBackfill() {
+	apiKey := os.Getenv("CRYPTO_HFT_DATA")
+	if apiKey == "" {
+		s.logger.Error("CRYPTO_HFT_DATA not set, skipping ob backfill")
+		return
+	}
+
+	now := time.Now().UTC()
+	end := now.Truncate(time.Hour).Add(-time.Hour)
+	start := end.Add(-time.Hour)
+
+	allSymbols := s.cfg.Exchanges.Binance.Symbols
+	if len(allSymbols) == 0 {
+		return
+	}
+
+	const exchange = "binance_futures"
+
+	for _, sym := range allSymbols {
+		if !strings.Contains(sym, "USDT") {
+			continue
+		}
+
+		canonical := symbols.NormalizeCanonical(sym)
+
+		config := pipeline.Config{
+			Symbol:    canonical,
+			StartDate: start,
+			EndDate:   end,
+			Exchange:  exchange,
+			APIKey:    apiKey,
+			Overwrite: true,
+		}
+
+		coordinator := pipeline.NewCoordinator(config, s.database)
+		ctx, cancel := context.WithTimeout(s.ctx, 30*time.Minute)
+		err := coordinator.Run(ctx)
+		cancel()
+
+		if err != nil {
+			s.logger.Error("OB backfill failed",
+				"symbol", canonical,
+				"error", err,
+			)
+		} else {
+			s.logger.Info("OB backfill completed",
+				"symbol", canonical,
+				"start", start.Format("2006-01-02T15"),
+				"end", end.Format("2006-01-02T15"),
+			)
+		}
 	}
 }
 

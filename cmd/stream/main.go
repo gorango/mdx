@@ -14,6 +14,7 @@ func main() {
 	configPath := flag.String("config", "config.yaml", "Path to config file")
 	natsURL := flag.String("nats", "nats://localhost:4222", "NATS server URL")
 	symbolsPath := flag.String("symbols", "../config/symbols.yaml", "Path to symbols file")
+	backfillOB := flag.Bool("backfill-ob", false, "Enable hourly ob-hydrate backfill for latest 2 hours (overwrite)")
 	flag.Parse()
 
 	var symbols []string
@@ -34,6 +35,7 @@ func main() {
 		NatsURL:    *natsURL,
 		Symbols:    symbols,
 		Logger:     slog.Default(),
+		BackfillOB: *backfillOB,
 	})
 	if err != nil {
 		fmt.Printf("Failed to initialize streamer: %v\n", err)
