@@ -96,6 +96,9 @@ func (c *Client) Connect(ctx context.Context) error {
 	}
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	c.stopped = false
+	if c.connectionHandler != nil {
+		c.connectionHandler.OnStatusChange("binance", exchange.ConnectionStatusConnecting)
+	}
 	return nil
 }
 
@@ -143,6 +146,10 @@ func (c *Client) Subscribe(symbols []string, handler types.EventHandler) error {
 		c.marketConn.gen++
 		c.marketConn.conn = conn
 		go c.readLoop(c.marketConn)
+	}
+
+	if c.connectionHandler != nil {
+		c.connectionHandler.OnStatusChange("binance", exchange.ConnectionStatusConnected)
 	}
 
 	return nil
@@ -203,11 +210,12 @@ func (c *Client) buildPublicStreams(symbols []string) []string {
 }
 
 func (c *Client) buildMarketStreams(symbols []string) []string {
-	streams := make([]string, 0, len(symbols)*2)
+	streams := make([]string, 0, len(symbols)*3)
 	for _, symbol := range symbols {
 		sym := c.toExchangeSymbol(symbol)
 		streams = append(streams,
 			sym+"@aggTrade",
+			sym+"@markPrice@1s",
 			sym+"@forceOrder",
 		)
 	}
@@ -307,6 +315,12 @@ func (c *Client) handleDisconnect(wc *wsConn) {
 		c.reconnect(wc)
 	})
 	wc.reconn.mu.Unlock()
+
+	// Only the market connection carries trades, funding, and liquidations;
+	// gate liquidation coverage status on it, not on depth connection health.
+	if wc.name == "market" && c.connectionHandler != nil {
+		c.connectionHandler.OnStatusChange("binance", exchange.ConnectionStatusReconnecting)
+	}
 }
 
 func (c *Client) reconnect(wc *wsConn) {
@@ -385,6 +399,9 @@ func (c *Client) reconnect(wc *wsConn) {
 	}
 
 	fmt.Printf("[Binance:%s] Reconnected successfully\n", wc.name)
+	if wc.name == "market" && c.connectionHandler != nil {
+		c.connectionHandler.OnStatusChange("binance", exchange.ConnectionStatusConnected)
+	}
 	go c.readLoop(wc)
 }
 
@@ -409,6 +426,9 @@ func (c *Client) Close() error {
 		c.cancel()
 	}
 	c.closeAll()
+	if c.connectionHandler != nil {
+		c.connectionHandler.OnStatusChange("binance", exchange.ConnectionStatusDisconnected)
+	}
 	return nil
 }
 
