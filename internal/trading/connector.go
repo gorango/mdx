@@ -17,6 +17,7 @@ type Connector interface {
 	GetOpenOrders(ctx context.Context, symbol string) ([]types.OrderResponse, error)
 	SubmitOrder(ctx context.Context, req types.OrderRequest) (*types.OrderResponse, error)
 	CancelOrder(ctx context.Context, orderID string, symbol string) error
+	SetLeverage(ctx context.Context, symbol string, leverage int) error
 
 	Connect(ctx context.Context) error
 	Close() error

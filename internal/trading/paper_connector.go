@@ -12,6 +12,7 @@ type PaperConnector struct {
 	balance   types.Balance
 	positions map[string]types.Position
 	orders    map[string]types.OrderResponse
+	leverage  map[string]int
 	mu        sync.RWMutex
 }
 
@@ -34,6 +35,7 @@ func NewPaperConnector(id string, initialBalance map[string]float64) *PaperConne
 		balance:   b,
 		positions: make(map[string]types.Position),
 		orders:    make(map[string]types.OrderResponse),
+		leverage:  make(map[string]int),
 	}
 }
 
@@ -144,6 +146,13 @@ func (c *PaperConnector) SubmitOrder(ctx context.Context, req types.OrderRequest
 			pos.Size -= req.Amount
 		}
 		pos.Symbol = req.Symbol
+		if req.Leverage != nil {
+			lev := *req.Leverage
+			pos.Leverage = &lev
+		} else if lev, ok := c.leverage[req.Symbol]; ok && lev > 0 {
+			l := lev
+			pos.Leverage = &l
+		}
 		if pos.Size > 0 {
 			pos.Side = types.PositionSideLong
 		} else if pos.Size < 0 {
@@ -166,6 +175,18 @@ func (c *PaperConnector) SubmitOrder(ctx context.Context, req types.OrderRequest
 }
 
 func (c *PaperConnector) CancelOrder(ctx context.Context, orderID string, symbol string) error {
+	return nil
+}
+
+// SetLeverage records the requested leverage for a symbol; it is applied to
+// positions opened afterwards.
+func (c *PaperConnector) SetLeverage(ctx context.Context, symbol string, leverage int) error {
+	if leverage < 1 {
+		return &paperError{message: "leverage must be >= 1"}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.leverage[symbol] = leverage
 	return nil
 }
 

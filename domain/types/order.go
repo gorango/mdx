@@ -11,6 +11,7 @@ type OrderRequest struct {
 	OpenType      *int
 	PositionType  *int
 	ReduceOnly    *bool
+	TimeInForce   *TimeInForce
 	ClientOrderID *string
 }
 
@@ -19,6 +20,15 @@ type OrderType string
 const (
 	OrderTypeMarket OrderType = "market"
 	OrderTypeLimit  OrderType = "limit"
+)
+
+type TimeInForce string
+
+const (
+	TIFGTC TimeInForce = "GTC"
+	TIFIOC TimeInForce = "IOC"
+	TIFFOK TimeInForce = "FOK"
+	TIFGTX TimeInForce = "GTX" // post-only (Binance)
 )
 
 type OrderSide string

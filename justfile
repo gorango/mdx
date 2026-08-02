@@ -84,6 +84,9 @@ trade-order MODE SYMBOL SIDE AMOUNT *PRICE:
 
 # --- CLI: Stream ---
 
+daemon CONFIG='config.yaml' NATS='nats://localhost:4222':
+	go run ./cmd/exchange -config {{CONFIG}} -nats {{NATS}}
+
 stream *BACKFILL='':
 	@if [ "{{BACKFILL}}" = "backfill" ]; then \
 	    go run ./cmd/stream -config config.yaml -backfill-ob; \

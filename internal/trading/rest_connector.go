@@ -6,6 +6,7 @@ import (
 	"gorango/exchanges/domain/symbols"
 	"gorango/exchanges/domain/types"
 	"gorango/exchanges/internal/rest"
+	"math"
 	"time"
 )
 
@@ -126,7 +127,37 @@ func (c *RESTConnector) GetOpenOrders(ctx context.Context, symbol string) ([]typ
 
 func (c *RESTConnector) SubmitOrder(ctx context.Context, req types.OrderRequest) (*types.OrderResponse, error) {
 	req.Symbol = symbols.NormalizeCanonical(req.Symbol)
+
+	if req.Type == types.OrderTypeLimit && req.Price == nil {
+		return nil, fmt.Errorf("limit order requires price")
+	}
+
+	// Round the quantity down to the exchange's lot size and enforce the
+	// minimum order quantity — raw notional/price sizes from the engine do
+	// not respect exchange step sizes and get rejected otherwise.
+	step, minQty, err := c.client.FetchLotSize(ctx, req.Symbol)
+	if err == nil && step > 0 {
+		req.Amount = quantizeDown(req.Amount, step)
+		if req.Amount < minQty {
+			return nil, fmt.Errorf("quantity %.8f below minimum %.8f for %s", req.Amount, minQty, req.Symbol)
+		}
+	}
+
 	return c.client.SubmitOrder(ctx, req)
+}
+
+// quantizeDown rounds qty down to the nearest multiple of step.
+func quantizeDown(qty, step float64) float64 {
+	if qty <= 0 || step <= 0 {
+		return qty
+	}
+	const epsilon = 1e-9
+	mult := math.Floor(qty/step + epsilon)
+	return mult * step
+}
+
+func (c *RESTConnector) SetLeverage(ctx context.Context, symbol string, leverage int) error {
+	return c.client.SetLeverage(ctx, symbols.NormalizeCanonical(symbol), leverage)
 }
 
 func (c *RESTConnector) CancelOrder(ctx context.Context, orderID string, symbol string) error {

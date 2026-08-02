@@ -14,6 +14,8 @@ type MockRESTClient struct {
 	SubmitOrderFunc        func(ctx context.Context, req types.OrderRequest) (*types.OrderResponse, error)
 	CancelOrderFunc        func(ctx context.Context, orderID, symbol string) error
 	FetchOpenOrdersFunc    func(ctx context.Context, symbol string) ([]types.OrderResponse, error)
+	SetLeverageFunc        func(ctx context.Context, symbol string, leverage int) error
+	FetchLotSizeFunc       func(ctx context.Context, symbol string) (step, minQty float64, err error)
 }
 
 func (m *MockRESTClient) ID() string {
@@ -63,6 +65,20 @@ func (m *MockRESTClient) FetchOpenOrders(ctx context.Context, symbol string) ([]
 		return m.FetchOpenOrdersFunc(ctx, symbol)
 	}
 	return nil, nil
+}
+
+func (m *MockRESTClient) SetLeverage(ctx context.Context, symbol string, leverage int) error {
+	if m.SetLeverageFunc != nil {
+		return m.SetLeverageFunc(ctx, symbol, leverage)
+	}
+	return nil
+}
+
+func (m *MockRESTClient) FetchLotSize(ctx context.Context, symbol string) (float64, float64, error) {
+	if m.FetchLotSizeFunc != nil {
+		return m.FetchLotSizeFunc(ctx, symbol)
+	}
+	return 0, 0, nil
 }
 
 func (m *MockRESTClient) DownloadMonthlyZip(ctx context.Context, symbol string, year, month int) ([]types.Bar, error) {

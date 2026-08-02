@@ -105,6 +105,26 @@ func main() {
 		}
 	}
 
+	// Route engine orders arriving on NATS (`orders.>`) to a live connector.
+	if natsClient != nil {
+		var liveID string
+		var liveConn trading.Connector
+		for _, id := range []string{"binance", "bybit"} {
+			if conn, ok := connectors[id]; ok {
+				liveID, liveConn = id, conn
+				break
+			}
+		}
+		if liveConn != nil {
+			bridge := trading.NewOrderBridge(natsClient.GetConn(), liveConn, slog.Default())
+			if err := bridge.Start(); err != nil {
+				fmt.Printf("Warning: Failed to start order bridge: %v\n", err)
+			} else {
+				fmt.Printf("Order bridge listening for %s orders on NATS\n", liveID)
+			}
+		}
+	}
+
 	var priceCache *cache.PriceCache
 	if cfg.Exchanges.Binance.Enabled {
 		restClient := rest.NewBinance(rest.Config{Testnet: cfg.Exchanges.Binance.Testnet})

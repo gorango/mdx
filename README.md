@@ -149,6 +149,24 @@ subscriptions.unsubscribe
 history.bars
 ```
 
+Order execution (engine ↔ bridge, request-reply):
+
+```
+orders.{symbol}.{action}      # action ∈ {open, close}; payload = engine OrderRequest JSON
+orders.{symbol}.cancel        # payload = {symbol, order_id}
+```
+
+The `cmd/exchange` daemon runs an order bridge subscribed to `orders.>` (queue group
+`order-bridge`) that translates engine order JSON into `domain/types.OrderRequest`,
+submits it through the live connector, and replies with an execution report:
+
+- `action=close` maps to `reduceOnly=true` — a close can never flip into a reverse position.
+- `order_type=post_only` maps to a limit order with `GTX` (post-only) time-in-force.
+- Order quantities are rounded down to the exchange's lot size (`FetchLotSize`) and
+  rejected below the minimum order quantity.
+- `leverage` is applied before opening via `SetLeverage` (Binance `/fapi/v1/leverage`,
+  Bybit `/v5/position/set-leverage`).
+
 ## Symbol Format
 
 Uses a canonical format: `BASE/QUOTE:PERP`

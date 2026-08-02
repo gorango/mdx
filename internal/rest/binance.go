@@ -326,10 +326,21 @@ func (c *BinanceClient) SubmitOrder(ctx context.Context, req types.OrderRequest)
 		return nil, fmt.Errorf("API secret required for trading")
 	}
 
+	// Binance requires uppercase side/type values while the domain uses
+	// lower-case constants — mapping is mandatory or orders get rejected.
+	side := strings.ToUpper(string(req.Side))
+	orderType := strings.ToUpper(string(req.Type))
+	if side != "BUY" && side != "SELL" {
+		return nil, fmt.Errorf("unsupported side %q", req.Side)
+	}
+	if orderType != "MARKET" && orderType != "LIMIT" {
+		return nil, fmt.Errorf("unsupported order type %q", req.Type)
+	}
+
 	params := map[string]string{
 		"symbol":     symbols.CanonicalToExchange(req.Symbol, "binance"),
-		"side":       string(req.Side),
-		"type":       string(req.Type),
+		"side":       side,
+		"type":       orderType,
 		"quantity":   strconv.FormatFloat(req.Amount, 'f', 8, 64),
 		"timestamp":  strconv.FormatInt(time.Now().UnixMilli(), 10),
 		"recvWindow": "5000",
@@ -340,15 +351,25 @@ func (c *BinanceClient) SubmitOrder(ctx context.Context, req types.OrderRequest)
 			return nil, fmt.Errorf("limit order requires price")
 		}
 		params["price"] = strconv.FormatFloat(*req.Price, 'f', 8, 64)
-		params["timeInForce"] = "GTC"
+		tif := types.TIFGTC
+		if req.TimeInForce != nil {
+			tif = *req.TimeInForce
+		}
+		params["timeInForce"] = string(tif)
 	}
 
 	if req.PositionSide != nil {
 		params["positionSide"] = *req.PositionSide
 	}
-	if req.Leverage != nil {
-		params["leverage"] = strconv.Itoa(*req.Leverage)
+	if req.ReduceOnly != nil && *req.ReduceOnly {
+		params["reduceOnly"] = "true"
 	}
+	if req.ClientOrderID != nil && *req.ClientOrderID != "" {
+		params["newClientOrderId"] = *req.ClientOrderID
+	}
+
+	// Note: initial leverage is NOT an order parameter on Binance USDT-M
+	// futures — it must be set via SetLeverage (/fapi/v1/leverage) first.
 
 	signed, err := c.signRequest(params)
 	if err != nil {
@@ -374,33 +395,160 @@ func (c *BinanceClient) SubmitOrder(ctx context.Context, req types.OrderRequest)
 	}
 
 	var raw struct {
-		OrderID       int64   `json:"orderId"`
-		ClientOrderID string  `json:"clientOrderId"`
-		Symbol        string  `json:"symbol"`
-		Side          string  `json:"side"`
-		Type          string  `json:"type"`
-		Price         float64 `json:"price"`
-		OrigQty       float64 `json:"origQty"`
-		ExecutedQty   float64 `json:"executedQty"`
-		AvgPrice      float64 `json:"avgPrice"`
-		Status        string  `json:"status"`
+		OrderID       int64  `json:"orderId"`
+		ClientOrderID string `json:"clientOrderId"`
+		Symbol        string `json:"symbol"`
+		Side          string `json:"side"`
+		Type          string `json:"type"`
+		Price         string `json:"price"`
+		OrigQty       string `json:"origQty"`
+		ExecutedQty   string `json:"executedQty"`
+		AvgPrice      string `json:"avgPrice"`
+		Status        string `json:"status"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
+	// Binance returns numeric fields as JSON strings.
+	price := parseFloatString(raw.Price)
+	origQty := parseFloatString(raw.OrigQty)
+	executedQty := parseFloatString(raw.ExecutedQty)
+	avgPrice := parseFloatString(raw.AvgPrice)
+
 	return &types.OrderResponse{
 		ID:        strconv.FormatInt(raw.OrderID, 10),
 		Symbol:    symbols.ExchangeToCanonical("binance", raw.Symbol),
-		Type:      types.OrderType(raw.Type),
-		Side:      types.OrderSide(raw.Side),
-		Amount:    raw.OrigQty,
-		Filled:    raw.ExecutedQty,
-		Remaining: raw.OrigQty - raw.ExecutedQty,
-		Price:     raw.Price,
-		Average:   &raw.AvgPrice,
-		Status:    types.OrderStatus(raw.Status),
+		Type:      types.OrderType(strings.ToLower(raw.Type)),
+		Side:      types.OrderSide(strings.ToLower(raw.Side)),
+		Amount:    origQty,
+		Filled:    executedQty,
+		Remaining: origQty - executedQty,
+		Price:     price,
+		Average:   &avgPrice,
+		Status:    types.OrderStatus(strings.ToLower(raw.Status)),
 	}, nil
+}
+
+// parseFloatString parses a numeric string (Binance returns numbers as JSON
+// strings), returning 0 on empty or invalid input.
+func parseFloatString(s string) float64 {
+	v, _ := strconv.ParseFloat(s, 64)
+	return v
+}
+
+// SetLeverage changes the initial leverage for a symbol on Binance USDT-M
+// futures. Leverage is a symbol-level account setting, not an order
+// parameter, so it must be called via the dedicated /fapi/v1/leverage
+// endpoint before placing a leveraged order.
+func (c *BinanceClient) SetLeverage(ctx context.Context, symbol string, leverage int) error {
+	if c.secret == "" {
+		return fmt.Errorf("API secret required")
+	}
+	if leverage < 1 || leverage > 125 {
+		return fmt.Errorf("leverage %d out of range [1,125]", leverage)
+	}
+
+	params := map[string]string{
+		"symbol":     symbols.CanonicalToExchange(symbol, "binance"),
+		"leverage":   strconv.Itoa(leverage),
+		"timestamp":  strconv.FormatInt(time.Now().UnixMilli(), 10),
+		"recvWindow": "5000",
+	}
+
+	signed, err := c.signRequest(params)
+	if err != nil {
+		return err
+	}
+
+	reqURL := c.baseURL + "/fapi/v1/leverage?" + signed
+	req, err := http.NewRequestWithContext(ctx, "POST", reqURL, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("X-MBX-APIKEY", c.apiKey)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("set leverage: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("binance API error: %s", string(body))
+	}
+
+	var raw struct {
+		Symbol   string `json:"symbol"`
+		Leverage int    `json:"leverage"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return fmt.Errorf("decode response: %w", err)
+	}
+	if raw.Leverage != leverage {
+		return fmt.Errorf("set leverage: expected %d got %d for %s", leverage, raw.Leverage, raw.Symbol)
+	}
+	return nil
+}
+
+// FetchLotSize returns the quantity step size and minimum order quantity for
+// a symbol from Binance's exchangeInfo filters (LOT_SIZE).
+func (c *BinanceClient) FetchLotSize(ctx context.Context, symbol string) (float64, float64, error) {
+	exchangeSymbol := symbols.CanonicalToExchange(symbol, "binance")
+
+	q := url.Values{}
+	q.Set("symbol", exchangeSymbol)
+	reqURL := c.baseURL + "/fapi/v1/exchangeInfo?" + q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	if err != nil {
+		return 0, 0, fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return 0, 0, fmt.Errorf("fetch exchange info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return 0, 0, fmt.Errorf("binance API error: %s", string(body))
+	}
+
+	var raw struct {
+		Symbols []struct {
+			Symbol  string `json:"symbol"`
+			Filters []struct {
+				FilterType string `json:"filterType"`
+				StepSize   string `json:"stepSize"`
+				MinQty     string `json:"minQty"`
+			} `json:"filters"`
+		} `json:"symbols"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return 0, 0, fmt.Errorf("decode response: %w", err)
+	}
+
+	for _, s := range raw.Symbols {
+		if s.Symbol != exchangeSymbol {
+			continue
+		}
+		for _, f := range s.Filters {
+			if f.FilterType == "LOT_SIZE" {
+				step, _ := strconv.ParseFloat(f.StepSize, 64)
+				minQty, _ := strconv.ParseFloat(f.MinQty, 64)
+				if step <= 0 {
+					return 0, 0, fmt.Errorf("lot size step for %s is %s", exchangeSymbol, f.StepSize)
+				}
+				return step, minQty, nil
+			}
+		}
+		return 0, 0, fmt.Errorf("LOT_SIZE filter not found for %s", exchangeSymbol)
+	}
+
+	return 0, 0, fmt.Errorf("symbol %s not found in exchangeInfo", exchangeSymbol)
 }
 
 func (c *BinanceClient) CancelOrder(ctx context.Context, orderID, symbol string) error {
@@ -477,15 +625,15 @@ func (c *BinanceClient) FetchOpenOrders(ctx context.Context, symbol string) ([]t
 	}
 
 	var raw []struct {
-		OrderID       int64   `json:"orderId"`
-		ClientOrderID string  `json:"clientOrderId"`
-		Symbol        string  `json:"symbol"`
-		Side          string  `json:"side"`
-		Type          string  `json:"type"`
-		Price         float64 `json:"price"`
-		OrigQty       float64 `json:"origQty"`
-		ExecutedQty   float64 `json:"executedQty"`
-		Status        string  `json:"status"`
+		OrderID       int64  `json:"orderId"`
+		ClientOrderID string `json:"clientOrderId"`
+		Symbol        string `json:"symbol"`
+		Side          string `json:"side"`
+		Type          string `json:"type"`
+		Price         string `json:"price"`
+		OrigQty       string `json:"origQty"`
+		ExecutedQty   string `json:"executedQty"`
+		Status        string `json:"status"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
@@ -493,16 +641,18 @@ func (c *BinanceClient) FetchOpenOrders(ctx context.Context, symbol string) ([]t
 
 	orders := make([]types.OrderResponse, 0, len(raw))
 	for _, o := range raw {
+		origQty := parseFloatString(o.OrigQty)
+		executedQty := parseFloatString(o.ExecutedQty)
 		orders = append(orders, types.OrderResponse{
 			ID:        strconv.FormatInt(o.OrderID, 10),
 			Symbol:    symbols.ExchangeToCanonical("binance", o.Symbol),
-			Type:      types.OrderType(o.Type),
-			Side:      types.OrderSide(o.Side),
-			Amount:    o.OrigQty,
-			Filled:    o.ExecutedQty,
-			Remaining: o.OrigQty - o.ExecutedQty,
-			Price:     o.Price,
-			Status:    types.OrderStatus(o.Status),
+			Type:      types.OrderType(strings.ToLower(o.Type)),
+			Side:      types.OrderSide(strings.ToLower(o.Side)),
+			Amount:    origQty,
+			Filled:    executedQty,
+			Remaining: origQty - executedQty,
+			Price:     parseFloatString(o.Price),
+			Status:    types.OrderStatus(strings.ToLower(o.Status)),
 		})
 	}
 
