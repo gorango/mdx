@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 )
 
 func main() {
@@ -42,7 +43,14 @@ func main() {
 		balances := parseBalance(*balance)
 		conn = trading.NewPaperConnector("paper", balances)
 	default:
-		conn2, err := trading.NewCCXTConnector(*exchange, os.Getenv("EXCHANGE_API_KEY"), os.Getenv("EXCHANGE_SECRET"))
+		apiKey := os.Getenv("BINANCE_API_KEY")
+		secret := os.Getenv("BINANCE_SECRET_KEY")
+		if apiKey == "" {
+			apiKey = os.Getenv("EXCHANGE_API_KEY")
+			secret = os.Getenv("EXCHANGE_SECRET")
+		}
+		secret = strings.ReplaceAll(secret, "\\n", "\n")
+		conn2, err := trading.NewCCXTConnector(*exchange, apiKey, secret)
 		if err != nil {
 			fmt.Printf("Failed to create connector: %v\n", err)
 			os.Exit(1)

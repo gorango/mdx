@@ -4,10 +4,14 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"gorango/exchanges/domain/symbols"
 	"gorango/exchanges/domain/timeframe"
@@ -60,16 +64,40 @@ func (c *BinanceClient) signRequest(params map[string]string) (string, error) {
 		query.Set(k, v)
 	}
 
-	signature := c.sign(query.Encode())
+	payload := query.Encode()
+	signature := c.sign(payload)
 	query.Set("signature", signature)
 
 	return query.Encode(), nil
 }
 
 func (c *BinanceClient) sign(message string) string {
-	mac := hmac.New(sha256.New, []byte(c.secret))
-	mac.Write([]byte(message))
-	return hex.EncodeToString(mac.Sum(nil))
+	var sig string
+	if strings.HasPrefix(c.secret, "-----BEGIN PRIVATE KEY-----") {
+		sig = c.ed25519Sign(message)
+	} else {
+		mac := hmac.New(sha256.New, []byte(c.secret))
+		mac.Write([]byte(message))
+		sig = hex.EncodeToString(mac.Sum(nil))
+	}
+	return sig
+}
+
+func (c *BinanceClient) ed25519Sign(message string) string {
+	block, _ := pem.Decode([]byte(c.secret))
+	if block == nil {
+		return ""
+	}
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return ""
+	}
+	edKey, ok := key.(ed25519.PrivateKey)
+	if !ok {
+		return ""
+	}
+	sig := ed25519.Sign(edKey, []byte(message))
+	return base64.StdEncoding.EncodeToString(sig)
 }
 
 func (c *BinanceClient) FetchOHLCV(ctx context.Context, symbol, tf string, since int64, limit int) ([]types.Bar, error) {
@@ -161,7 +189,8 @@ func (c *BinanceClient) FetchBalance(ctx context.Context) (*types.Balance, error
 	}
 
 	params := map[string]string{
-		"timestamp": strconv.FormatInt(time.Now().UnixMilli(), 10),
+		"timestamp":  strconv.FormatInt(time.Now().UnixMilli(), 10),
+		"recvWindow": "5000",
 	}
 
 	signed, err := c.signRequest(params)
@@ -224,7 +253,8 @@ func (c *BinanceClient) FetchPositions(ctx context.Context) ([]types.Position, e
 	}
 
 	params := map[string]string{
-		"timestamp": strconv.FormatInt(time.Now().UnixMilli(), 10),
+		"timestamp":  strconv.FormatInt(time.Now().UnixMilli(), 10),
+		"recvWindow": "5000",
 	}
 
 	signed, err := c.signRequest(params)
