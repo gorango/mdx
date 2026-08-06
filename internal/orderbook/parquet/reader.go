@@ -143,46 +143,46 @@ func writeOrderBookChunk(rows []OrderBook) (string, error) {
 
 	for _, u := range rows {
 		if err := binary.Write(wr, binary.LittleEndian, u.EventTime); err != nil {
-			tmp.Close()
+			_ = tmp.Close()
 			_ = os.Remove(path)
 			return "", fmt.Errorf("write event_time: %w", err)
 		}
 		if err := binary.Write(wr, binary.LittleEndian, u.Price); err != nil {
-			tmp.Close()
+			_ = tmp.Close()
 			_ = os.Remove(path)
 			return "", fmt.Errorf("write price: %w", err)
 		}
 		if err := binary.Write(wr, binary.LittleEndian, u.Quantity); err != nil {
-			tmp.Close()
+			_ = tmp.Close()
 			_ = os.Remove(path)
 			return "", fmt.Errorf("write quantity: %w", err)
 		}
 		side := sideToByte(u.Side)
 		if err := binary.Write(wr, binary.LittleEndian, side); err != nil {
-			tmp.Close()
+			_ = tmp.Close()
 			_ = os.Remove(path)
 			return "", fmt.Errorf("write side: %w", err)
 		}
 		eventType := eventTypeToByte(u.EventType)
 		if err := binary.Write(wr, binary.LittleEndian, eventType); err != nil {
-			tmp.Close()
+			_ = tmp.Close()
 			_ = os.Remove(path)
 			return "", fmt.Errorf("write event_type: %w", err)
 		}
 		if err := binary.Write(wr, binary.LittleEndian, u.FinalUpdateID); err != nil {
-			tmp.Close()
+			_ = tmp.Close()
 			_ = os.Remove(path)
 			return "", fmt.Errorf("write final_update_id: %w", err)
 		}
 		if err := binary.Write(wr, binary.LittleEndian, u.PrevFinalUpdateID); err != nil {
-			tmp.Close()
+			_ = tmp.Close()
 			_ = os.Remove(path)
 			return "", fmt.Errorf("write prev_final_update_id: %w", err)
 		}
 	}
 
 	if err := wr.Flush(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		_ = os.Remove(path)
 		return "", fmt.Errorf("flush chunk writer: %w", err)
 	}
@@ -293,7 +293,7 @@ func (r *Reader) ReadTrades() ([]Trade, error) {
 		for {
 			n, err := rows.ReadRows(buffer)
 			if err != nil && err != io.EOF {
-				rows.Close()
+				_ = rows.Close()
 				return nil, fmt.Errorf("read rows: %w", err)
 			}
 
@@ -326,7 +326,7 @@ func (r *Reader) ReadTrades() ([]Trade, error) {
 				break
 			}
 		}
-		rows.Close()
+		_ = rows.Close()
 	}
 
 	return trades, nil
@@ -357,7 +357,7 @@ func (r *Reader) ReadOrderBook() ([]OrderBook, error) {
 		for {
 			n, err := rows.ReadRows(buffer)
 			if err != nil && err != io.EOF {
-				rows.Close()
+				_ = rows.Close()
 				return nil, fmt.Errorf("read rows: %w", err)
 			}
 
@@ -405,7 +405,7 @@ func (r *Reader) ReadOrderBook() ([]OrderBook, error) {
 				break
 			}
 		}
-		rows.Close()
+		_ = rows.Close()
 	}
 
 	return updates, nil
@@ -436,7 +436,7 @@ func (r *Reader) ReadOpenInterest() ([]OpenInterest, error) {
 		for {
 			n, err := rows.ReadRows(buffer)
 			if err != nil && err != io.EOF {
-				rows.Close()
+				_ = rows.Close()
 				return nil, fmt.Errorf("read rows: %w", err)
 			}
 
@@ -467,7 +467,7 @@ func (r *Reader) ReadOpenInterest() ([]OpenInterest, error) {
 				break
 			}
 		}
-		rows.Close()
+		_ = rows.Close()
 	}
 
 	return updates, nil
@@ -498,7 +498,7 @@ func (r *Reader) ReadLiquidations() ([]Liquidation, error) {
 		for {
 			n, err := rows.ReadRows(buffer)
 			if err != nil && err != io.EOF {
-				rows.Close()
+				_ = rows.Close()
 				return nil, fmt.Errorf("read rows: %w", err)
 			}
 
@@ -529,7 +529,7 @@ func (r *Reader) ReadLiquidations() ([]Liquidation, error) {
 				break
 			}
 		}
-		rows.Close()
+		_ = rows.Close()
 	}
 
 	return liquidations, nil
@@ -558,7 +558,7 @@ func (r *Reader) StreamTrades(callback func(Trade) error) error {
 		for {
 			n, err := rows.ReadRows(buffer)
 			if err != nil && err != io.EOF {
-				rows.Close()
+				_ = rows.Close()
 				return fmt.Errorf("read rows: %w", err)
 			}
 
@@ -585,7 +585,7 @@ func (r *Reader) StreamTrades(callback func(Trade) error) error {
 				}
 
 				if err := callback(trade); err != nil {
-					rows.Close()
+					_ = rows.Close()
 					return err
 				}
 			}
@@ -594,7 +594,7 @@ func (r *Reader) StreamTrades(callback func(Trade) error) error {
 				break
 			}
 		}
-		rows.Close()
+		_ = rows.Close()
 	}
 
 	return nil
@@ -657,7 +657,7 @@ func (r *Reader) StreamOrderBook(callback func(OrderBook) error) error {
 		for {
 			n, err := rows.ReadRows(buffer)
 			if err != nil && err != io.EOF {
-				rows.Close()
+				_ = rows.Close()
 				return fmt.Errorf("read rows: %w", err)
 			}
 
@@ -701,7 +701,7 @@ func (r *Reader) StreamOrderBook(callback func(OrderBook) error) error {
 				updates = append(updates, update)
 				if len(updates) >= orderBookSortChunkSize {
 					if err := spillChunk(); err != nil {
-						rows.Close()
+						_ = rows.Close()
 						return fmt.Errorf("spill sorted chunk: %w", err)
 					}
 				}
@@ -711,7 +711,7 @@ func (r *Reader) StreamOrderBook(callback func(OrderBook) error) error {
 				break
 			}
 		}
-		rows.Close()
+		_ = rows.Close()
 	}
 
 	if len(chunkPaths) == 0 {
@@ -809,7 +809,7 @@ func (r *Reader) StreamOpenInterest(callback func(OpenInterest) error) error {
 		for {
 			n, err := rows.ReadRows(buffer)
 			if err != nil && err != io.EOF {
-				rows.Close()
+				_ = rows.Close()
 				return fmt.Errorf("read rows: %w", err)
 			}
 
@@ -834,7 +834,7 @@ func (r *Reader) StreamOpenInterest(callback func(OpenInterest) error) error {
 				}
 
 				if err := callback(update); err != nil {
-					rows.Close()
+					_ = rows.Close()
 					return err
 				}
 			}
@@ -843,7 +843,7 @@ func (r *Reader) StreamOpenInterest(callback func(OpenInterest) error) error {
 				break
 			}
 		}
-		rows.Close()
+		_ = rows.Close()
 	}
 
 	return nil
@@ -872,7 +872,7 @@ func (r *Reader) StreamLiquidations(callback func(Liquidation) error) error {
 		for {
 			n, err := rows.ReadRows(buffer)
 			if err != nil && err != io.EOF {
-				rows.Close()
+				_ = rows.Close()
 				return fmt.Errorf("read rows: %w", err)
 			}
 
@@ -897,7 +897,7 @@ func (r *Reader) StreamLiquidations(callback func(Liquidation) error) error {
 				}
 
 				if err := callback(liq); err != nil {
-					rows.Close()
+					_ = rows.Close()
 					return err
 				}
 			}
@@ -906,7 +906,7 @@ func (r *Reader) StreamLiquidations(callback func(Liquidation) error) error {
 				break
 			}
 		}
-		rows.Close()
+		_ = rows.Close()
 	}
 
 	return nil

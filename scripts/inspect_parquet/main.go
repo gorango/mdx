@@ -25,7 +25,7 @@ func main() {
 		pf, err := parquet.OpenFile(f, st.Size())
 		if err != nil {
 			fmt.Printf("=== %s: cannot open parquet: %v\n\n", dtype, err)
-			f.Close()
+			_ = f.Close()
 			continue
 		}
 
@@ -107,13 +107,14 @@ func main() {
 							for _, colName := range []string{"event_time", "event_type", "side", "price", "quantity", "first_update_id", "final_update_id", "prev_final_update_id"} {
 								if idx, ok := colIndex[colName]; ok && idx < len(row) {
 									val := row[idx]
-									if colName == "event_time" {
+									switch colName {
+									case "event_time":
 										parts = append(parts, fmt.Sprintf("%s=%d", colName, val.Int64()))
-									} else if colName == "price" || colName == "quantity" {
+									case "price", "quantity":
 										parts = append(parts, fmt.Sprintf("%s=%s", colName, val.String()))
-									} else if colName == "first_update_id" || colName == "final_update_id" || colName == "prev_final_update_id" {
+									case "first_update_id", "final_update_id", "prev_final_update_id":
 										parts = append(parts, fmt.Sprintf("%s=%d", colName, val.Int64()))
-									} else {
+									default:
 										parts = append(parts, fmt.Sprintf("%s=%s", colName, val.String()))
 									}
 								}
@@ -126,7 +127,7 @@ func main() {
 						break
 					}
 				}
-				rows.Close()
+				_ = rows.Close()
 				if rowCount >= 10000 {
 					break
 				}
@@ -165,7 +166,7 @@ func main() {
 					fmt.Printf("Row %d: %v\n", count, buf[0])
 					count++
 				}
-				rows.Close()
+				_ = rows.Close()
 				if count >= 5 {
 					break
 				}
@@ -173,6 +174,6 @@ func main() {
 		}
 
 		fmt.Println()
-		f.Close()
+		_ = f.Close()
 	}
 }

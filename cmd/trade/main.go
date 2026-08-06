@@ -62,7 +62,7 @@ func main() {
 		fmt.Printf("Failed to connect: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	switch cmd {
 	case "balance":

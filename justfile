@@ -29,6 +29,10 @@ fmt:
 vet:
 	go vet ./...
 
+# Lint with golangci-lint (errcheck, staticcheck, unused, vet)
+lint:
+	golangci-lint run ./... --max-same-issues=0 --max-issues-per-linter=0
+
 tidy:
 	go mod tidy
 

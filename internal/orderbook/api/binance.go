@@ -94,7 +94,7 @@ func (c *BinanceClient) fetchFundingPage(symbol string, startTime, endTime int64
 	points := make([]FundingPoint, len(rawData))
 	for i, d := range rawData {
 		rate := 0.0
-		fmt.Sscanf(d.FundingRate, "%f", &rate)
+		_, _ = fmt.Sscanf(d.FundingRate, "%f", &rate)
 		points[i] = FundingPoint{Time: d.FundingTime, Rate: rate}
 	}
 	return points, nil

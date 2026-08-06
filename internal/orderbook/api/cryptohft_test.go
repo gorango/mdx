@@ -43,7 +43,7 @@ func TestDownloadParquetHTTPError(t *testing.T) {
 func TestDownloadResultCleanup(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "test_*.parquet")
 	assert.NoError(t, err)
-	tmpFile.Close()
+	_ = tmpFile.Close()
 	tmpPath := tmpFile.Name()
 
 	result := &DownloadResult{
@@ -85,8 +85,8 @@ func TestCleanupStaleTempFiles(t *testing.T) {
 	tmpDir := os.TempDir()
 	tmpFile, err := os.CreateTemp(tmpDir, "test_*.parquet")
 	assert.NoError(t, err)
-	tmpFile.Close()
-	defer os.Remove(tmpFile.Name())
+	_ = tmpFile.Close()
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	err = CleanupStaleTempFiles()
 	assert.NoError(t, err)

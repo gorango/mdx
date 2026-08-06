@@ -33,7 +33,7 @@ func TestBridgeEndToEndOverNATS(t *testing.T) {
 
 	bridge := NewOrderBridge(nc, stub, nil)
 	require.NoError(t, bridge.Start())
-	defer bridge.Stop()
+	defer func() { _ = bridge.Stop() }()
 	require.NoError(t, nc.Flush())
 
 	// Engine side: NATSExchange.SendOrder → nc.Request on orders.<sym>.<action>.
@@ -77,7 +77,7 @@ func TestBridgeEndToEndOverNATS(t *testing.T) {
 	}
 	rejectBridge := NewOrderBridge(nc, rejecting, nil)
 	require.NoError(t, rejectBridge.Start())
-	defer rejectBridge.Stop()
+	defer func() { _ = rejectBridge.Stop() }()
 	require.NoError(t, nc.Flush())
 
 	openPayload, _ := json.Marshal(engineOrder{Symbol: "BTC/USDT:PERP", Side: "BUY", Action: "open", Size: 0.001})

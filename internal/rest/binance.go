@@ -131,7 +131,7 @@ func (c *BinanceClient) FetchOHLCV(ctx context.Context, symbol, tf string, since
 	if err != nil {
 		return nil, fmt.Errorf("fetch klines: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -152,7 +152,7 @@ func (c *BinanceClient) FetchOHLCV(ctx context.Context, symbol, tf string, since
 		var ts int64
 		var open, high, low, close, vol float64
 
-		json.Unmarshal(o[0], &ts)
+		_ = json.Unmarshal(o[0], &ts)
 		parseFloat(o[1], &open)
 		parseFloat(o[2], &high)
 		parseFloat(o[3], &low)
@@ -209,7 +209,7 @@ func (c *BinanceClient) FetchBalance(ctx context.Context) (*types.Balance, error
 	if err != nil {
 		return nil, fmt.Errorf("fetch balance: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -273,7 +273,7 @@ func (c *BinanceClient) FetchPositions(ctx context.Context) ([]types.Position, e
 	if err != nil {
 		return nil, fmt.Errorf("fetch positions: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -387,7 +387,7 @@ func (c *BinanceClient) SubmitOrder(ctx context.Context, req types.OrderRequest)
 	if err != nil {
 		return nil, fmt.Errorf("submit order: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
@@ -472,7 +472,7 @@ func (c *BinanceClient) SetLeverage(ctx context.Context, symbol string, leverage
 	if err != nil {
 		return fmt.Errorf("set leverage: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
@@ -510,7 +510,7 @@ func (c *BinanceClient) FetchLotSize(ctx context.Context, symbol string) (float6
 	if err != nil {
 		return 0, 0, fmt.Errorf("fetch exchange info: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
@@ -579,7 +579,7 @@ func (c *BinanceClient) CancelOrder(ctx context.Context, orderID, symbol string)
 	if err != nil {
 		return fmt.Errorf("cancel order: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -617,7 +617,7 @@ func (c *BinanceClient) FetchOpenOrders(ctx context.Context, symbol string) ([]t
 	if err != nil {
 		return nil, fmt.Errorf("fetch open orders: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -667,37 +667,6 @@ type BinanceFuturesTradeReq struct {
 	Price    float64 `json:"price,omitempty"`
 }
 
-func (c *BinanceClient) signedRequest(ctx context.Context, method, endpoint string, params map[string]string) ([]byte, error) {
-	signed, err := c.signRequest(params)
-	if err != nil {
-		return nil, err
-	}
-
-	reqURL := c.baseURL + endpoint + "?" + signed
-	req, err := http.NewRequestWithContext(ctx, method, reqURL, bytes.NewReader(nil))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("X-MBX-APIKEY", c.apiKey)
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("binance API error: %s", string(body))
-	}
-
-	return body, nil
-}
-
 func (c *BinanceClient) DownloadMonthlyZip(ctx context.Context, symbol string, year, month int) ([]types.Bar, error) {
 	exchangeSymbol := strings.ToUpper(symbols.CanonicalToExchange(symbol, "binance"))
 	url := fmt.Sprintf(
@@ -714,7 +683,7 @@ func (c *BinanceClient) DownloadMonthlyZip(ctx context.Context, symbol string, y
 	if err != nil {
 		return nil, fmt.Errorf("download zip: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, nil
@@ -741,7 +710,7 @@ func (c *BinanceClient) DownloadMonthlyZip(ctx context.Context, symbol string, y
 			continue
 		}
 		data, err := io.ReadAll(rc)
-		rc.Close()
+		_ = rc.Close()
 		if err != nil {
 			continue
 		}
@@ -812,7 +781,7 @@ func (c *BinanceClient) FetchOpenInterest(ctx context.Context, symbol string) (f
 	if err != nil {
 		return 0, fmt.Errorf("fetch open interest: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

@@ -145,7 +145,7 @@ func New(opts Options) (*Streamer, error) {
 func (s *Streamer) Start() error {
 	fmt.Println("Connected to database")
 	if nc := s.GetNATS(); nc != nil {
-		defer nc.Close()
+		defer func() { _ = nc.Close() }()
 		fmt.Println("Connected to NATS")
 	} else {
 		go s.retryNATS()
@@ -173,7 +173,7 @@ func (s *Streamer) Shutdown() error {
 	for symbol, barList := range bars {
 		s.flusher.Add("binance", symbol, barList)
 	}
-	s.flusher.Flush(context.Background())
+	_ = s.flusher.Flush(context.Background())
 
 	stats := s.flusher.Stats()
 	fmt.Printf("Flusher stats: %+v\n", stats)
@@ -294,7 +294,7 @@ func (s *Streamer) makeEventHandler() types.EventHandler {
 							"volume":    pb.volume,
 						}
 						data, _ := json.Marshal(barData)
-						nc.GetConn().Publish(subject, data)
+						_ = nc.GetConn().Publish(subject, data)
 					}
 				}
 				tradeBars[event.Symbol] = &tradeBar{
@@ -574,7 +574,7 @@ func startExchange(ctx context.Context, name string, client exchange.Client, sym
 		select {
 		case <-ctx.Done():
 			fmt.Printf("[%s] Context cancelled, stopping\n", name)
-			client.Close()
+			_ = client.Close()
 			return
 		default:
 		}
@@ -596,11 +596,10 @@ func startExchange(ctx context.Context, name string, client exchange.Client, sym
 		}
 
 		fmt.Printf("[%s] Connected and subscribed\n", name)
-		reconnectAttempts = 0
 
 		<-ctx.Done()
 		fmt.Printf("[%s] Closing connection\n", name)
-		client.Close()
+		_ = client.Close()
 		return
 	}
 }

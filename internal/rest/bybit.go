@@ -110,7 +110,7 @@ func (c *BybitClient) signedRequest(ctx context.Context, method, path string, pa
 	if err != nil {
 		return nil, fmt.Errorf("%s %s: %w", method, path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -185,7 +185,7 @@ func (c *BybitClient) FetchOHLCV(ctx context.Context, symbol, tf string, since i
 	if err != nil {
 		return nil, fmt.Errorf("fetch klines: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

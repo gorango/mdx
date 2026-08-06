@@ -107,7 +107,9 @@ func TestUnsubscribe(t *testing.T) {
 	mgr.RegisterClient("binance", mock)
 	mgr.SetHandler("binance", func(event types.Event) {})
 
-	mgr.Subscribe("binance", []string{"BTC/USDT:PERP", "ETH/USDT:PERP"})
+	if err := mgr.Subscribe("binance", []string{"BTC/USDT:PERP", "ETH/USDT:PERP"}); err != nil {
+		t.Fatalf("Subscribe failed: %v", err)
+	}
 
 	err := mgr.Unsubscribe("binance", []string{"BTC/USDT:PERP"})
 	if err != nil {

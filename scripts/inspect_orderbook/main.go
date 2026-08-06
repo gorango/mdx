@@ -36,7 +36,7 @@ func main() {
 		fmt.Printf("Error downloading: %v\n", err)
 		os.Exit(1)
 	}
-	defer result.Cleanup()
+	defer func() { _ = result.Cleanup() }()
 
 	fmt.Printf("Downloaded to: %s\n", result.FilePath)
 

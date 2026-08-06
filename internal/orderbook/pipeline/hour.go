@@ -132,6 +132,12 @@ func (p *HourProcessor) Process(ctx context.Context, date string, hour int) (*Ho
 	)
 
 	if err := p.processOpenInterest(date, hourStr, agg); err != nil {
+		p.logger.Debug("Open interest error (non-fatal)",
+			"symbol", p.symbol,
+			"date", date,
+			"hour", hour,
+			"error", err,
+		)
 	}
 
 	liqSucceeded := false
@@ -231,13 +237,13 @@ func (p *HourProcessor) processTrades(date, hourStr string, agg *aggregator.Aggr
 	if err != nil {
 		return 0, err
 	}
-	defer download.Cleanup()
+	defer func() { _ = download.Cleanup() }()
 
 	reader, err := parquet.Open(download.FilePath)
 	if err != nil {
 		return 0, fmt.Errorf("open parquet: %w", err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	hourTime, _ := time.ParseInLocation("2006-01-02T15:04:05", date+"T"+hourStr+":00:00", time.UTC)
 	hourStartMs := hourTime.UnixMilli()
@@ -270,13 +276,13 @@ func (p *HourProcessor) processOpenInterest(date, hourStr string, agg *aggregato
 	if err != nil {
 		return err
 	}
-	defer download.Cleanup()
+	defer func() { _ = download.Cleanup() }()
 
 	reader, err := parquet.Open(download.FilePath)
 	if err != nil {
 		return fmt.Errorf("open parquet: %w", err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	hourTime, _ := time.ParseInLocation("2006-01-02T15:04:05", date+"T"+hourStr+":00:00", time.UTC)
 	hourStartMs := hourTime.UnixMilli()
@@ -303,13 +309,13 @@ func (p *HourProcessor) processLiquidations(date, hourStr string, agg *aggregato
 	if err != nil {
 		return err
 	}
-	defer download.Cleanup()
+	defer func() { _ = download.Cleanup() }()
 
 	reader, err := parquet.Open(download.FilePath)
 	if err != nil {
 		return fmt.Errorf("open parquet: %w", err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	hourTime, _ := time.ParseInLocation("2006-01-02T15:04:05", date+"T"+hourStr+":00:00", time.UTC)
 	hourStartMs := hourTime.UnixMilli()
@@ -333,13 +339,13 @@ func (p *HourProcessor) processOrderBook(date, hourStr string, agg *aggregator.A
 	if err != nil {
 		return err
 	}
-	defer download.Cleanup()
+	defer func() { _ = download.Cleanup() }()
 
 	reader, err := parquet.Open(download.FilePath)
 	if err != nil {
 		return fmt.Errorf("open parquet: %w", err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	hourTime, _ := time.ParseInLocation("2006-01-02T15:04:05", date+"T"+hourStr+":00:00", time.UTC)
 	hourStartMs := hourTime.UnixMilli()

@@ -158,13 +158,13 @@ func (c *Client) Subscribe(symbols []string, handler types.EventHandler) error {
 func (c *Client) closeAll() {
 	for _, dc := range c.depthConns {
 		if dc.conn != nil {
-			dc.conn.Close()
+			_ = dc.conn.Close()
 			dc.conn = nil
 		}
 	}
 	c.depthConns = nil
 	if c.marketConn.conn != nil {
-		c.marketConn.conn.Close()
+		_ = c.marketConn.conn.Close()
 		c.marketConn.conn = nil
 	}
 }
@@ -284,18 +284,6 @@ func (c *Client) currentGen(name string) int64 {
 	return 0
 }
 
-func (c *Client) getWSConn(name string) *wsConn {
-	if name == "market" {
-		return c.marketConn
-	}
-	for _, dc := range c.depthConns {
-		if dc.name == name {
-			return dc
-		}
-	}
-	return nil
-}
-
 func (c *Client) handleDisconnect(wc *wsConn) {
 	c.mu.RLock()
 	stopped := c.stopped
@@ -337,7 +325,7 @@ func (c *Client) reconnect(wc *wsConn) {
 
 	c.mu.Lock()
 	if wc.conn != nil {
-		wc.conn.Close()
+		_ = wc.conn.Close()
 		wc.conn = nil
 	}
 	c.mu.Unlock()

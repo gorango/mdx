@@ -24,10 +24,10 @@ exchanges:
 `
 	tmp, err := os.CreateTemp("", "config-*.yaml")
 	assert.NoError(t, err)
-	defer os.Remove(tmp.Name())
+	defer func() { _ = os.Remove(tmp.Name()) }()
 	_, err = tmp.WriteString(content)
 	assert.NoError(t, err)
-	tmp.Close()
+	_ = tmp.Close()
 
 	cfg, err := LoadExchanges(tmp.Name())
 	assert.NoError(t, err)

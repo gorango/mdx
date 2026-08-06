@@ -19,14 +19,14 @@ func main() {
 		fmt.Printf("Error downloading: %v\n", err)
 		os.Exit(1)
 	}
-	defer result.Cleanup()
+	defer func() { _ = result.Cleanup() }()
 
 	f, err := os.Open(result.FilePath)
 	if err != nil {
 		fmt.Printf("Error opening: %v\n", err)
 		os.Exit(1)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	st, _ := f.Stat()
 	pf, err := parquet.OpenFile(f, st.Size())
@@ -38,8 +38,8 @@ func main() {
 	fmt.Printf("Schema columns: %v\n", pf.Schema().Columns())
 	fmt.Printf("Num rows: %d\n", pf.NumRows())
 
-	for _, rg := range pf.RowGroups() {
-		rows := rg.Rows()
+	if len(pf.RowGroups()) > 0 {
+		rows := pf.RowGroups()[0].Rows()
 		buf := make([]parquet.Row, 5)
 		n, err := rows.ReadRows(buf)
 		if err != nil {
@@ -52,7 +52,6 @@ func main() {
 			}
 			fmt.Println()
 		}
-		rows.Close()
-		break
+		_ = rows.Close()
 	}
 }

@@ -73,7 +73,7 @@ func (f *Flusher) Add(exchange, symbol string, bars []types.OrderbookBar) {
 		f.flushing = true
 		f.flushMu.Unlock()
 		go func() {
-			f.Flush(context.Background())
+			_ = f.Flush(context.Background())
 			f.flushMu.Lock()
 			f.flushing = false
 			f.flushMu.Unlock()
@@ -152,7 +152,7 @@ func (f *Flusher) Start(ctx context.Context) error {
 			case <-f.stopCh:
 				return
 			case <-ticker.C:
-				f.Flush(ctx)
+				_ = f.Flush(ctx)
 			case <-ctx.Done():
 				return
 			}

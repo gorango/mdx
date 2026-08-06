@@ -30,7 +30,6 @@ type PriceCache struct {
 	restClient   rest.Client
 	logger       *slog.Logger
 	requestGroup singleflight.Group
-	zipEnabled   bool
 	overwrite    bool
 }
 
@@ -401,11 +400,7 @@ func (c *PriceCache) backfillGap(ctx context.Context, symbol string, gapStart, g
 	var allFetched []types.Bar
 	fetchStart := gapStart
 
-	for {
-		if !fetchStart.Before(gapEnd) {
-			break
-		}
-
+	for fetchStart.Before(gapEnd) {
 		resp, err := c.backfillWithRetry(ctx, symbol, fetchStart, MaxBarsPerRequest)
 		if err != nil {
 			if len(allFetched) > 0 {

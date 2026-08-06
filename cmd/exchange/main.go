@@ -74,7 +74,7 @@ func main() {
 		fmt.Printf("Warning: Failed to connect to NATS: %v\n", err)
 		fmt.Println("Continuing without NATS...")
 	} else {
-		defer natsClient.Close()
+		defer func() { _ = natsClient.Close() }()
 		fmt.Println("Connected to NATS")
 	}
 
@@ -194,7 +194,7 @@ func main() {
 	fmt.Println("Shutting down...")
 
 	for _, client := range exchangeClients {
-		client.Close()
+		_ = client.Close()
 	}
 
 	for id, conn := range connectors {
@@ -218,7 +218,7 @@ func startExchange(ctx context.Context, name string, client exchange.Client, sym
 		select {
 		case <-ctx.Done():
 			fmt.Printf("[%s] Context cancelled, stopping\n", name)
-			client.Close()
+			_ = client.Close()
 			return
 		default:
 		}
@@ -232,11 +232,10 @@ func startExchange(ctx context.Context, name string, client exchange.Client, sym
 		}
 
 		fmt.Printf("[%s] Connected (execution events only)\n", name)
-		reconnectAttempts = 0
 
 		<-ctx.Done()
 		fmt.Printf("[%s] Closing connection\n", name)
-		client.Close()
+		_ = client.Close()
 		return
 	}
 }

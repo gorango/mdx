@@ -34,7 +34,7 @@ func TestBinanceSubmitOrderMarketNoLeverageParam(t *testing.T) {
 	client, query := newBinanceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/fapi/v1/order", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"orderId": 12345, "clientOrderId": "abc", "symbol": "BTCUSDT",
 			"side": "BUY", "type": "MARKET", "price": "0",
 			"origQty": "0.10000000", "executedQty": "0.10000000",
@@ -67,7 +67,7 @@ func TestBinanceSubmitOrderMarketNoLeverageParam(t *testing.T) {
 func TestBinanceSubmitOrderReduceOnlyAndTIF(t *testing.T) {
 	client, query := newBinanceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"orderId": 1, "symbol": "BTCUSDT", "side": "SELL", "type": "LIMIT", "status": "NEW", "origQty": "1", "executedQty": "0", "avgPrice": "0", "price": "50000"}`))
+		_, _ = w.Write([]byte(`{"orderId": 1, "symbol": "BTCUSDT", "side": "SELL", "type": "LIMIT", "status": "NEW", "origQty": "1", "executedQty": "0", "avgPrice": "0", "price": "50000"}`))
 	})
 
 	price := 50000.0
@@ -99,7 +99,7 @@ func TestBinanceSetLeverage(t *testing.T) {
 	client, query := newBinanceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		capturedPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"symbol": "BTCUSDT", "leverage": 5}`))
+		_, _ = w.Write([]byte(`{"symbol": "BTCUSDT", "leverage": 5}`))
 	})
 
 	err := client.SetLeverage(context.Background(), "BTC/USDT:PERP", 5)
@@ -122,7 +122,7 @@ func TestBinanceSetLeverageOutOfRange(t *testing.T) {
 func TestBinanceSetLeverageMismatch(t *testing.T) {
 	client, _ := newBinanceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"symbol": "BTCUSDT", "leverage": 1}`))
+		_, _ = w.Write([]byte(`{"symbol": "BTCUSDT", "leverage": 1}`))
 	})
 	err := client.SetLeverage(context.Background(), "BTC/USDT:PERP", 5)
 	require.Error(t, err)
@@ -133,7 +133,7 @@ func TestBinanceFetchLotSize(t *testing.T) {
 	client, query := newBinanceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/fapi/v1/exchangeInfo", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"symbols": [{
 				"symbol": "BTCUSDT",
 				"filters": [
@@ -154,7 +154,7 @@ func TestBinanceFetchLotSize(t *testing.T) {
 func TestBinanceSubmitOrderAPIError(t *testing.T) {
 	client, _ := newBinanceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"code":-1104,"msg":"Not all sent parameters were read"}`))
+		_, _ = w.Write([]byte(`{"code":-1104,"msg":"Not all sent parameters were read"}`))
 	})
 
 	_, err := client.SubmitOrder(context.Background(), types.OrderRequest{
@@ -174,7 +174,7 @@ func TestBinanceSignedRequestHmac(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedQuery = r.URL.RawQuery
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"assets":[]}`))
+		_, _ = w.Write([]byte(`{"assets":[]}`))
 	}))
 	defer srv.Close()
 

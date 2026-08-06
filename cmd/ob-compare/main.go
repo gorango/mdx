@@ -475,7 +475,7 @@ func main() {
 
 	maxDiffs := 100
 	if s := os.Getenv("HYDRATE_MAX_DIFFS"); s != "" {
-		fmt.Sscanf(s, "%d", &maxDiffs)
+		_, _ = fmt.Sscanf(s, "%d", &maxDiffs)
 	}
 
 	fmt.Printf("Comparing ob-hydrate vs stream data\n")

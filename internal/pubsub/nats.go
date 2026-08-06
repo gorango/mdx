@@ -75,7 +75,7 @@ func (n *NATS) Close() error {
 	defer n.mu.Unlock()
 
 	for _, sub := range n.subs {
-		sub.Unsubscribe()
+		_ = sub.Unsubscribe()
 	}
 	n.subs = nil
 
@@ -177,7 +177,7 @@ func (n *NATS) SubscribeHandler(ctx context.Context, subject string, handler fun
 
 	go func() {
 		<-ctx.Done()
-		sub.Unsubscribe()
+		_ = sub.Unsubscribe()
 	}()
 
 	return nil
@@ -222,7 +222,7 @@ func (s *Subscriber) Close() error {
 	defer s.mu.Unlock()
 
 	for _, sub := range s.subs {
-		sub.Unsubscribe()
+		_ = sub.Unsubscribe()
 	}
 
 	if s.conn != nil {
@@ -256,7 +256,7 @@ func (s *Subscriber) SubscribeMarketEvents(ctx context.Context, exchange, symbol
 		})
 		if err != nil {
 			for _, prevSub := range subs {
-				prevSub.Unsubscribe()
+				_ = prevSub.Unsubscribe()
 			}
 			return fmt.Errorf("subscribe %s: %w", subject, err)
 		}
@@ -270,7 +270,7 @@ func (s *Subscriber) SubscribeMarketEvents(ctx context.Context, exchange, symbol
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		for _, sub := range subs {
-			sub.Unsubscribe()
+			_ = sub.Unsubscribe()
 		}
 	}()
 
@@ -317,7 +317,7 @@ func HandleSubscriptionRequests(nc *nats.Conn, mgr SubscriptionManager, logger *
 			logger.Error("unmarshal subscription request failed", "err", err, "data", string(msg.Data))
 			resp := SubscriptionResponse{Success: false, Error: "invalid request"}
 			data, _ := json.Marshal(resp)
-			msg.Respond(data)
+			_ = msg.Respond(data)
 			return
 		}
 
@@ -328,14 +328,14 @@ func HandleSubscriptionRequests(nc *nats.Conn, mgr SubscriptionManager, logger *
 			logger.Error("subscribe failed", "err", err, "exchange", req.Exchange)
 			resp := SubscriptionResponse{Success: false, Error: err.Error()}
 			data, _ := json.Marshal(resp)
-			msg.Respond(data)
+			_ = msg.Respond(data)
 			return
 		}
 
 		logger.Info("subscription successful", "exchange", req.Exchange, "symbols", req.Symbols)
 		resp := SubscriptionResponse{Success: true}
 		data, _ := json.Marshal(resp)
-		msg.Respond(data)
+		_ = msg.Respond(data)
 	})
 	if err != nil {
 		return fmt.Errorf("subscribe to subscriptions.subscribe: %w", err)
@@ -349,7 +349,7 @@ func HandleSubscriptionRequests(nc *nats.Conn, mgr SubscriptionManager, logger *
 			logger.Error("unmarshal unsubscription request failed", "err", err, "data", string(msg.Data))
 			resp := SubscriptionResponse{Success: false, Error: "invalid request"}
 			data, _ := json.Marshal(resp)
-			msg.Respond(data)
+			_ = msg.Respond(data)
 			return
 		}
 
@@ -360,14 +360,14 @@ func HandleSubscriptionRequests(nc *nats.Conn, mgr SubscriptionManager, logger *
 			logger.Error("unsubscribe failed", "err", err, "exchange", req.Exchange)
 			resp := SubscriptionResponse{Success: false, Error: err.Error()}
 			data, _ := json.Marshal(resp)
-			msg.Respond(data)
+			_ = msg.Respond(data)
 			return
 		}
 
 		logger.Info("unsubscription successful", "exchange", req.Exchange, "symbols", req.Symbols)
 		resp := SubscriptionResponse{Success: true}
 		data, _ := json.Marshal(resp)
-		msg.Respond(data)
+		_ = msg.Respond(data)
 	})
 	if err != nil {
 		return fmt.Errorf("subscribe to subscriptions.unsubscribe: %w", err)
@@ -387,7 +387,7 @@ func HandleHistoryRequests(nc *nats.Conn, fetcher HistoryFetcher, logger *slog.L
 		var req HistoryRequest
 		if err := json.Unmarshal(msg.Data, &req); err != nil {
 			logger.Error("unmarshal history request failed", "err", err, "data", string(msg.Data))
-			msg.Respond([]byte(`{"error": "invalid request"}`))
+			_ = msg.Respond([]byte(`{"error": "invalid request"}`))
 			return
 		}
 
@@ -406,7 +406,7 @@ func HandleHistoryRequests(nc *nats.Conn, fetcher HistoryFetcher, logger *slog.L
 		bars, err := fetcher.GetHistory(ctx, req.Symbol, tf, start, end)
 		if err != nil {
 			logger.Error("get history failed", "err", err, "symbol", req.Symbol, "tf", tf.ID)
-			msg.Respond([]byte(fmt.Sprintf(`{"error": %q}`, err.Error())))
+			_ = msg.Respond([]byte(fmt.Sprintf(`{"error": %q}`, err.Error())))
 			return
 		}
 
@@ -439,11 +439,11 @@ func HandleHistoryRequests(nc *nats.Conn, fetcher HistoryFetcher, logger *slog.L
 		data, err := json.Marshal(response)
 		if err != nil {
 			logger.Error("marshal history response failed", "err", err)
-			msg.Respond([]byte(`{"error": "internal error"}`))
+			_ = msg.Respond([]byte(`{"error": "internal error"}`))
 			return
 		}
 
-		msg.Respond(data)
+		_ = msg.Respond(data)
 	})
 
 	return err

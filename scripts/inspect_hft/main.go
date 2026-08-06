@@ -19,9 +19,8 @@ func main() {
 	hour := flag.String("hour", "00", "Hour string")
 	flag.Parse()
 
-	if err := godotenv.Load(); err != nil {
-		// Ignore if .env doesn't exist
-	}
+	// Ignore if .env doesn't exist
+	_ = godotenv.Load()
 
 	apiKey := os.Getenv("CRYPTO_HFT_DATA")
 	if apiKey == "" {
@@ -65,7 +64,7 @@ func main() {
 		}
 
 		inspectParquet(res.FilePath)
-		res.Cleanup()
+		_ = res.Cleanup()
 	}
 }
 
@@ -75,7 +74,7 @@ func inspectParquet(filePath string) {
 		log.Printf("Failed to open file: %v", err)
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	stat, err := f.Stat()
 	if err != nil {
@@ -105,7 +104,7 @@ func inspectParquet(filePath string) {
 	}
 
 	rows := rowGroups[0].Rows()
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	// Read up to 2 rows for sampling
 	buffer := make([]parquet.Row, 2)

@@ -39,7 +39,7 @@ func newBybitTestClient(t *testing.T, handler http.HandlerFunc) (*BybitClient, f
 func bybitOK(body string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(body))
+		_, _ = w.Write([]byte(body))
 	}
 }
 

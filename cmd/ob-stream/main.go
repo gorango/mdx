@@ -83,7 +83,7 @@ func main() {
 		fmt.Printf("Warning: Failed to connect to NATS: %v\n", err)
 		fmt.Println("Continuing without NATS publishing...")
 	} else {
-		defer natsClient.Close()
+		defer func() { _ = natsClient.Close() }()
 		fmt.Println("Connected to NATS")
 	}
 
@@ -188,7 +188,7 @@ func main() {
 	for symbol, barList := range bars {
 		flusher.Add("binance", symbol, barList)
 	}
-	flusher.Flush(context.Background())
+	_ = flusher.Flush(context.Background())
 
 	stats := flusher.Stats()
 	fmt.Printf("Flusher stats: %+v\n", stats)
@@ -288,7 +288,7 @@ func startExchange(ctx context.Context, name string, client exchange.Client, sym
 		select {
 		case <-ctx.Done():
 			fmt.Printf("[%s] Context cancelled, stopping\n", name)
-			client.Close()
+			_ = client.Close()
 			return
 		default:
 		}
@@ -310,11 +310,10 @@ func startExchange(ctx context.Context, name string, client exchange.Client, sym
 		}
 
 		fmt.Printf("[%s] Connected and subscribed\n", name)
-		reconnectAttempts = 0
 
 		<-ctx.Done()
 		fmt.Printf("[%s] Closing connection\n", name)
-		client.Close()
+		_ = client.Close()
 		return
 	}
 }

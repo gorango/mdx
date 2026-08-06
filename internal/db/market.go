@@ -24,7 +24,7 @@ func (db *DB) InsertPriceBars(ctx context.Context, exchange, symbol string, bars
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	tmpTable := fmt.Sprintf("tmp_price_bars_%d", time.Now().UnixNano())
 
@@ -134,7 +134,7 @@ func (db *DB) InsertOrderbookBars(ctx context.Context, exchange, symbol string, 
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	tmpTable := fmt.Sprintf("tmp_orderbook_bars_%d", time.Now().UnixNano())
 

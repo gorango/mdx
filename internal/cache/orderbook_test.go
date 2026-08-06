@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"gorango/exchanges/domain/timeframe"
 	"gorango/exchanges/domain/types"
 	"testing"
@@ -242,7 +243,7 @@ func TestGetBarsNilDB(t *testing.T) {
 		db:         nil,
 	}
 
-	result, err := cache.GetBars(nil, "BTC/USDT:PERP", time.Now().Add(-time.Hour), time.Now())
+	result, err := cache.GetBars(context.TODO(), "BTC/USDT:PERP", time.Now().Add(-time.Hour), time.Now())
 	assert.NoError(t, err)
 	assert.Nil(t, result)
 }
