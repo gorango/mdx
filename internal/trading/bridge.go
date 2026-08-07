@@ -119,6 +119,8 @@ func (b *OrderBridge) handle(msg *nats.Msg) {
 	switch action {
 	case "cancel":
 		b.handleCancel(msg, symbol)
+	case "set_leverage":
+		b.handleSetLeverage(msg, symbol)
 	default:
 		b.handleOrder(msg, symbol, action)
 	}
@@ -143,6 +145,37 @@ func (b *OrderBridge) handleCancel(msg *nats.Msg, symbol string) {
 		return
 	}
 	b.logger.Info("order canceled", "order_id", req.OrderID, "symbol", symbol)
+}
+
+// handleSetLeverage applies the engine's derived margin headroom to a symbol
+// (a one-time account-level setting via the connector, not a per-trade knob).
+// Replies with an ExecutionReport so the engine's request-reply can surface
+// connector/range errors (e.g. leverage beyond the exchange maximum) loudly.
+func (b *OrderBridge) handleSetLeverage(msg *nats.Msg, symbol string) {
+	var req struct {
+		Symbol   string `json:"symbol"`
+		Leverage int    `json:"leverage"`
+	}
+	report := executionReport{Symbol: symbol, Action: "set_leverage"}
+	if err := json.Unmarshal(msg.Data, &req); err != nil {
+		report.Error = "invalid set-leverage payload: " + err.Error()
+	} else {
+		if req.Symbol != "" {
+			symbol = req.Symbol
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), b.submitTimeout)
+		defer cancel()
+		if err := b.conn.SetLeverage(ctx, symbol, req.Leverage); err != nil {
+			report.Error = fmt.Sprintf("set leverage %d: %v", req.Leverage, err)
+		}
+	}
+	data, _ := json.Marshal(report)
+	_ = msg.Respond(data)
+	if report.Error == "" {
+		b.logger.Info("leverage set", "symbol", symbol, "leverage", req.Leverage)
+	} else {
+		b.logger.Error("set leverage failed", "symbol", symbol, "err", report.Error)
+	}
 }
 
 func (b *OrderBridge) handleOrder(msg *nats.Msg, symbol, action string) {

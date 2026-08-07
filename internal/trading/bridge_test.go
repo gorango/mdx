@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -154,7 +155,78 @@ func TestExecuteRejectsOnLeverageError(t *testing.T) {
 	assert.Contains(t, report.Error, "set leverage")
 }
 
+func TestBridgeSetLeverage(t *testing.T) {
+	nc := testNATS(t)
+
+	var setSymbol string
+	var setLev int
+	stub := &stubConnector{
+		setLeverage: func(symbol string, lev int) error {
+			setSymbol = symbol
+			setLev = lev
+			return nil
+		},
+	}
+	bridge := NewOrderBridge(nc, stub, nil)
+	require.NoError(t, bridge.Start())
+	t.Cleanup(func() { _ = bridge.Stop() })
+
+	payload, _ := json.Marshal(struct {
+		Symbol   string `json:"symbol"`
+		Leverage int    `json:"leverage"`
+	}{Symbol: "BTC/USDT:PERP", Leverage: 30})
+
+	reply, err := nc.Request("orders.BTC/USDT:PERP.set_leverage", payload, 2*time.Second)
+	require.NoError(t, err)
+
+	assert.Equal(t, "BTC/USDT:PERP", setSymbol)
+	assert.Equal(t, 30, setLev, "derived leverage must reach the connector")
+
+	var report executionReport
+	require.NoError(t, json.Unmarshal(reply.Data, &report))
+	assert.Equal(t, "set_leverage", report.Action)
+	assert.Empty(t, report.Error)
+}
+
+func TestBridgeSetLeverageSurfacesError(t *testing.T) {
+	nc := testNATS(t)
+
+	stub := &stubConnector{
+		setLeverage: func(symbol string, lev int) error {
+			return errInsufficientFunds
+		},
+	}
+	bridge := NewOrderBridge(nc, stub, nil)
+	require.NoError(t, bridge.Start())
+	t.Cleanup(func() { _ = bridge.Stop() })
+
+	payload, _ := json.Marshal(struct {
+		Symbol   string `json:"symbol"`
+		Leverage int    `json:"leverage"`
+	}{Symbol: "BTC/USDT:PERP", Leverage: 30})
+
+	reply, err := nc.Request("orders.BTC/USDT:PERP.set_leverage", payload, 2*time.Second)
+	require.NoError(t, err)
+
+	var report executionReport
+	require.NoError(t, json.Unmarshal(reply.Data, &report))
+	assert.Equal(t, "set_leverage", report.Action)
+	assert.Contains(t, report.Error, "set leverage")
+}
+
 // --- test helpers ---
+
+// testNATS connects to a local NATS server, skipping the test when it is not
+// running (mirrors the engine's exchange test setup).
+func testNATS(t *testing.T) *nats.Conn {
+	t.Helper()
+	nc, err := nats.Connect("nats://localhost:4222")
+	if err != nil {
+		t.Skipf("NATS not available at localhost:4222: %v", err)
+	}
+	t.Cleanup(nc.Close)
+	return nc
+}
 
 type stubConnector struct {
 	submit      func(req types.OrderRequest) (*types.OrderResponse, error)
