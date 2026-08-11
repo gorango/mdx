@@ -2,8 +2,8 @@ package subscription
 
 import (
 	"fmt"
-	"gorango/exchanges/domain/types"
-	exchangeClient "gorango/exchanges/internal/ws"
+	"gorango/mdx/domain/types"
+	exchangeClient "gorango/mdx/internal/ws"
 	"sync"
 )
 

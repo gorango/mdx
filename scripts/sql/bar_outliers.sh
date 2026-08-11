@@ -6,7 +6,7 @@
 #   ./scripts/sql/bar_outliers.sh 2025-01-01  # From date onwards
 #   ./scripts/sql/bar_outliers.sh 2025-01-01 2025-12-31  # Date range
 
-DB_URL="${PG_URL:-postgres://postgres:postgres@localhost:5432/twain?sslmode=disable}"
+DB_URL="${PG_URL:-postgres://postgres:postgres@localhost:5432/mdx?sslmode=disable}"
 
 START=${1:-}
 END=${2:-}

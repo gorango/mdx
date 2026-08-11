@@ -13,8 +13,8 @@ package streaming
 import (
 	"cmp"
 	"fmt"
-	"gorango/exchanges/domain/types"
-	"gorango/exchanges/internal/orderbook/treap"
+	"gorango/mdx/domain/types"
+	"gorango/mdx/internal/orderbook/treap"
 	"math"
 	"slices"
 	"sync"

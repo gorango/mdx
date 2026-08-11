@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"gorango/exchanges/domain/symbols"
-	"gorango/exchanges/domain/types"
+	"gorango/mdx/domain/symbols"
+	"gorango/mdx/domain/types"
 
 	"github.com/nats-io/nats.go"
 )

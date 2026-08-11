@@ -2,7 +2,7 @@ package flusher
 
 import (
 	"context"
-	"gorango/exchanges/domain/types"
+	"gorango/mdx/domain/types"
 	"testing"
 	"time"
 

@@ -2,7 +2,7 @@ package rest
 
 import (
 	"context"
-	"gorango/exchanges/domain/types"
+	"gorango/mdx/domain/types"
 	"net/http"
 	"net/http/httptest"
 	"net/url"

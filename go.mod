@@ -1,4 +1,4 @@
-module gorango/exchanges
+module gorango/mdx
 
 go 1.24.9
 

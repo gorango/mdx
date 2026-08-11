@@ -3,9 +3,9 @@ package cache
 import (
 	"context"
 	"fmt"
-	"gorango/exchanges/domain/timeframe"
-	"gorango/exchanges/domain/types"
-	"gorango/exchanges/internal/rest"
+	"gorango/mdx/domain/timeframe"
+	"gorango/mdx/domain/types"
+	"gorango/mdx/internal/rest"
 	"log/slog"
 	"sort"
 	"sync"

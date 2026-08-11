@@ -6,7 +6,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/parquet-go/parquet-go"
-	"gorango/exchanges/internal/orderbook/api"
+	"gorango/mdx/internal/orderbook/api"
 )
 
 func main() {

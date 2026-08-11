@@ -6,7 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"gorango/exchanges/domain/types"
+	"gorango/mdx/domain/types"
 	"io"
 	"net/http"
 	"net/http/httptest"

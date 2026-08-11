@@ -1,7 +1,7 @@
 package bybit
 
 import (
-	"gorango/exchanges/domain/types"
+	"gorango/mdx/domain/types"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

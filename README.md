@@ -1,6 +1,6 @@
-# Exchanges
+# Market Data Exchange (MDX)
 
-High-performance market data microservice for algorithmic trading. WebSocket streaming, REST APIs, orderbook aggregation, and NATS pub/sub for real-time market data distribution.
+High-performance market data microservice for algorithmic trading — WebSocket and REST feeds from Binance, Bybit, and Hyperliquid, orderbook aggregation, and NATS pub/sub for real-time distribution.
 
 ## Packages
 
@@ -180,32 +180,24 @@ Uses a canonical format: `BASE/QUOTE:PERP`
 
 ## Architecture
 
-```
-Live Data Flow:
-┌─────────────┐     ┌──────────────┐     ┌───────────┐
-│ Exchange WS │────▶│ Aggregator   │────▶│ Flusher   │────▶ PostgreSQL
-└─────────────┘     └──────────────┘     └───────────┘
-       │                   │
-       ▼                   ▼
-┌─────────────┐     ┌──────────────┐
-│ NATS pub/sub│     │   Daemon     │
-└─────────────┘     └──────────────┘
-       │
-       ▼
-┌─────────────┐
-│ Subscribers │
-└─────────────┘
+### Live Data Flow
 
-Price Cache:
-┌──────────┐     ┌───────────┐     ┌──────────┐
-│  Memory  │◀───▶│ PostgreSQL│◀───▶│  REST    │
-│   LRU    │     └───────────┘     └──────────┘
-└──────────┘           │
-                       ▼
-              ┌────────────────┐
-              │ Gap Detection  │
-              │ & Fill         │
-              └────────────────┘
+```mermaid
+flowchart LR
+    WS[Exchange WS] --> Agg[Aggregator]
+    WS --> Nats[NATS pub/sub]
+    Agg --> Flush[Flusher] --> PG[(PostgreSQL)]
+    Agg --> Daemon[Daemon]
+    Nats --> Subs[Subscribers]
+```
+
+### Price Cache
+
+```mermaid
+flowchart LR
+    Mem[Memory LRU] <--> PGC[(PostgreSQL)]
+    PGC <--> REST[REST]
+    PGC --> Gap[Gap Detection & Fill]
 ```
 
 ## Price Cache Features
@@ -241,7 +233,7 @@ go tool cover -html=cover.out
 
 | Variable | Description | Default |
 |---|---|---|
-| `PG_URL` | PostgreSQL connection string | `postgres://postgres:postgres@localhost:5432/twain?sslmode=disable` |
+| `PG_URL` | PostgreSQL connection string | `postgres://postgres:postgres@localhost:5432/mdx?sslmode=disable` |
 | `EXCHANGE_API_KEY` | Exchange API key (for live trading) | — |
 | `EXCHANGE_SECRET` | Exchange secret | — |
 | `CRYPTO_HFT_DATA` | Data API key (for hydration) | — |

@@ -21,7 +21,7 @@ def main():
     parser.add_argument(
         "--db",
         default=os.environ.get(
-            "PG_URL", "postgres://postgres:postgres@localhost:5432/twain"
+            "PG_URL", "postgres://postgres:postgres@localhost:5432/mdx"
         ),
         help="Database URL",
     )

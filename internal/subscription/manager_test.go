@@ -2,8 +2,8 @@ package subscription
 
 import (
 	"context"
-	"gorango/exchanges/domain/types"
-	exchange "gorango/exchanges/internal/ws"
+	"gorango/mdx/domain/types"
+	exchange "gorango/mdx/internal/ws"
 	"testing"
 )
 

@@ -1,8 +1,8 @@
 package pipeline
 
 import (
-	"gorango/exchanges/domain/types"
-	"gorango/exchanges/internal/orderbook/api"
+	"gorango/mdx/domain/types"
+	"gorango/mdx/internal/orderbook/api"
 	"testing"
 )
 

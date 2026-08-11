@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"gorango/exchanges/internal/orderbook/api"
+	"gorango/mdx/internal/orderbook/api"
 	"log"
 	"os"
 	"strings"

@@ -2,7 +2,7 @@ package exchange
 
 import (
 	"context"
-	"gorango/exchanges/domain/types"
+	"gorango/mdx/domain/types"
 )
 
 type ConnectionStatus int

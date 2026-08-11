@@ -2,7 +2,7 @@ package aggregator
 
 import (
 	"fmt"
-	"gorango/exchanges/domain/types"
+	"gorango/mdx/domain/types"
 	"sync"
 )
 

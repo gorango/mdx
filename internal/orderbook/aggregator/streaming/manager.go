@@ -2,7 +2,7 @@ package streaming
 
 import (
 	"fmt"
-	"gorango/exchanges/domain/types"
+	"gorango/mdx/domain/types"
 	"math"
 	"sync"
 	"time"

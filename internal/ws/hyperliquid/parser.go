@@ -3,7 +3,7 @@ package hyperliquid
 import (
 	"encoding/json"
 	"fmt"
-	"gorango/exchanges/domain/types"
+	"gorango/mdx/domain/types"
 	"strconv"
 	"strings"
 )

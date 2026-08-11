@@ -3,9 +3,9 @@ package flusher
 import (
 	"context"
 	"fmt"
-	"gorango/exchanges/domain/symbols"
-	"gorango/exchanges/domain/types"
-	"gorango/exchanges/internal/db"
+	"gorango/mdx/domain/symbols"
+	"gorango/mdx/domain/types"
+	"gorango/mdx/internal/db"
 	"strings"
 	"sync"
 	"time"

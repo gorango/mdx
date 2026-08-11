@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"gorango/exchanges/internal/streamer"
+	"gorango/mdx/internal/streamer"
 	"log/slog"
 	"os"
 

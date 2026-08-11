@@ -3,9 +3,9 @@ package db
 import (
 	"context"
 	"fmt"
-	"gorango/exchanges/domain/timeframe"
-	"gorango/exchanges/domain/types"
-	"gorango/exchanges/internal/orderbook/api"
+	"gorango/mdx/domain/timeframe"
+	"gorango/mdx/domain/types"
+	"gorango/mdx/internal/orderbook/api"
 	"os"
 	"time"
 

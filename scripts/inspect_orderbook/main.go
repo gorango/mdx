@@ -3,10 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"gorango/exchanges/internal/orderbook/api"
+	"gorango/mdx/internal/orderbook/api"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 
 	"github.com/joho/godotenv"
 )
@@ -56,9 +57,10 @@ func main() {
 	fmt.Printf("Copied to: %s\n", inspectPath)
 	fmt.Println("\nRunning inspect script...")
 
-	// Run the inspect script
+	// Run the inspect script from the repo root, derived from this file's location
+	_, sourceFile, _, _ := runtime.Caller(0)
 	cmd := exec.Command("go", "run", "scripts/inspect_parquet/main.go")
-	cmd.Dir = "/home/g/m/gorango/exchanges"
+	cmd.Dir = filepath.Join(filepath.Dir(sourceFile), "..", "..")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 

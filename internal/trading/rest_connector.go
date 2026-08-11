@@ -3,9 +3,9 @@ package trading
 import (
 	"context"
 	"fmt"
-	"gorango/exchanges/domain/symbols"
-	"gorango/exchanges/domain/types"
-	"gorango/exchanges/internal/rest"
+	"gorango/mdx/domain/symbols"
+	"gorango/mdx/domain/types"
+	"gorango/mdx/internal/rest"
 	"math"
 	"time"
 )

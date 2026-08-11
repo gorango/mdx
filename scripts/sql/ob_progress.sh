@@ -6,7 +6,7 @@
 #   ./scripts/sql/ob_progress.sh 2026-05-01  # From May onwards
 #   ./scripts/sql/ob_progress.sh 2026-05-01 2026-06-01  # Date range
 
-DB_URL="${PG_URL:-postgres://postgres:postgres@localhost:5432/twain?sslmode=disable}"
+DB_URL="${PG_URL:-postgres://postgres:postgres@localhost:5432/mdx?sslmode=disable}"
 
 START=${1:-}
 END=${2:-}

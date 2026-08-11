@@ -2,7 +2,7 @@ package trading
 
 import (
 	"encoding/json"
-	"gorango/exchanges/domain/types"
+	"gorango/mdx/domain/types"
 	"testing"
 	"time"
 

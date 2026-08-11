@@ -2,8 +2,8 @@ package cache
 
 import (
 	"context"
-	"gorango/exchanges/domain/timeframe"
-	"gorango/exchanges/domain/types"
+	"gorango/mdx/domain/timeframe"
+	"gorango/mdx/domain/types"
 	"time"
 )
 

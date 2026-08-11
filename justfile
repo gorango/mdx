@@ -38,7 +38,7 @@ tidy:
 
 # --- Database ---
 
-PG_URL := env("PG_URL", "postgres://postgres:postgres@localhost:5432/twain?sslmode=disable")
+PG_URL := env("PG_URL", "postgres://postgres:postgres@localhost:5432/mdx?sslmode=disable")
 
 migrate:
 	@PG_URL="{{PG_URL}}" sh scripts/migrate.sh

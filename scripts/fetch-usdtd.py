@@ -56,7 +56,7 @@ def fetch_json(url: str) -> dict:
     delay = RATE_LIMIT_DELAY
     for attempt in range(MAX_RETRIES):
         time.sleep(delay)
-        req = urllib.request.Request(_add_key(url), headers={"User-Agent": "twain/1.0"})
+        req = urllib.request.Request(_add_key(url), headers={"User-Agent": "mdx/1.0"})
         if COINGECKO_KEY:
             req.add_header("x-cg-demo-api-key", COINGECKO_KEY)
         try:

@@ -2,8 +2,8 @@ package trading
 
 import (
 	"context"
-	"gorango/exchanges/domain/types"
-	"gorango/exchanges/internal/rest"
+	"gorango/mdx/domain/types"
+	"gorango/mdx/internal/rest"
 	"testing"
 	"time"
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"gorango/exchanges/internal/db"
+	"gorango/mdx/internal/db"
 	"log"
 	"os"
 	"time"

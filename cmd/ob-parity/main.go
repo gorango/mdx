@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	"gorango/exchanges/domain/symbols"
+	"gorango/mdx/domain/symbols"
 )
 
 type Manifest struct {
