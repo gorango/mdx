@@ -2,7 +2,6 @@ package api
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,31 +12,9 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-func CleanupStaleTempFiles() error {
-	tempDir := os.TempDir()
-	entries, err := os.ReadDir(tempDir)
-	if err != nil {
-		return fmt.Errorf("read temp dir: %w", err)
-	}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if len(name) > 8 && name[len(name)-8:] == ".parquet" {
-			path := filepath.Join(tempDir, name)
-			if err := os.Remove(path); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: failed to remove stale temp file %s: %v\n", path, err)
-			}
-		}
-	}
-	return nil
-}
-
 type CryptoHFTClient struct {
-	apiKey         string
-	httpClient     *fasthttp.Client
-	fundingHistory []FundingPoint
+	apiKey     string
+	httpClient *fasthttp.Client
 }
 
 func NewCryptoHFTClient(apiKey string) *CryptoHFTClient {
@@ -49,14 +26,6 @@ func NewCryptoHFTClient(apiKey string) *CryptoHFTClient {
 			MaxConnDuration: 5 * time.Minute,
 		},
 	}
-}
-
-func (c *CryptoHFTClient) SetFundingHistory(points []FundingPoint) {
-	c.fundingHistory = points
-}
-
-func (c *CryptoHFTClient) GetFundingHistory() []FundingPoint {
-	return c.fundingHistory
 }
 
 type DownloadResult struct {
@@ -131,33 +100,5 @@ func IsNotAvailable(err error) bool {
 		return false
 	}
 	errStr := err.Error()
-	return contains(errStr, "404") || contains(errStr, "not available") || contains(errStr, "not found")
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && containsSubstring(s, substr))
-}
-
-func containsSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
-type ReadCloser struct {
-	io.ReadCloser
-	cleanup func() error
-}
-
-func (r *ReadCloser) Close() error {
-	err := r.ReadCloser.Close()
-	if r.cleanup != nil {
-		if cleanupErr := r.cleanup(); cleanupErr != nil && err == nil {
-			err = cleanupErr
-		}
-	}
-	return err
+	return strings.Contains(errStr, "404") || strings.Contains(errStr, "not available") || strings.Contains(errStr, "not found")
 }

@@ -11,7 +11,6 @@ import (
 	"io"
 	"log/slog"
 	"strings"
-	"sync"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -37,11 +36,6 @@ func (c *PriceCache) SetOverwrite(v bool) {
 	c.overwrite = v
 }
 
-var (
-	globalCache     *PriceCache
-	globalCacheOnce sync.Once
-)
-
 func NewPriceCache(exchangeID string, dbConn PriceDB, restClient rest.Client, logger *slog.Logger) *PriceCache {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -54,30 +48,6 @@ func NewPriceCache(exchangeID string, dbConn PriceDB, restClient rest.Client, lo
 		restClient:  restClient,
 		logger:      logger,
 	}
-}
-
-func CreateGlobalPriceCache(exchangeID, connString string) (*PriceCache, error) {
-	var err error
-	globalCacheOnce.Do(func() {
-		dbConn, e := db.New(connString)
-		if e != nil {
-			err = e
-			return
-		}
-		var rc rest.Client
-		switch exchangeID {
-		case "binance":
-			rc = rest.NewBinance(rest.Config{})
-		case "bybit":
-			rc = rest.NewBybit(rest.Config{})
-		}
-		globalCache = NewPriceCache(exchangeID, dbConn, rc, nil)
-	})
-	return globalCache, err
-}
-
-func GetGlobalPriceCache() *PriceCache {
-	return globalCache
 }
 
 func (c *PriceCache) GetHistory(ctx context.Context, symbol string, targetTf timeframe.Timeframe, start, end time.Time) ([]types.Bar, error) {
@@ -274,10 +244,6 @@ func (c *PriceCache) getHistoryHigherTimeframe(ctx context.Context, symbol strin
 	return projected, nil
 }
 
-func (c *PriceCache) GetHistoryWithTimeframe(ctx context.Context, symbol string, tfDef timeframe.Timeframe, start, end time.Time) ([]types.Bar, error) {
-	return c.GetHistory(ctx, symbol, tfDef, start, end)
-}
-
 func (c *PriceCache) normalizeTimeRange(start, end time.Time) (time.Time, time.Time) {
 	effectiveEnd := end
 	if effectiveEnd.IsZero() {
@@ -355,7 +321,7 @@ func (c *PriceCache) fetch1mData(ctx context.Context, symbol string, start, end 
 						existingBars = DeduplicateBars(existingBars)
 					}
 				} else {
-					fetched, err := c.backfillConcurrently(ctx, symbol, monthStart, monthStart.AddDate(0, 1, 0))
+					fetched, err := c.backfillGap(ctx, symbol, monthStart, monthStart.AddDate(0, 1, 0))
 					if err != nil {
 						c.logger.Error("backfill error", "symbol", symbol, "err", err)
 						break
@@ -390,10 +356,6 @@ func (c *PriceCache) deletePriceBarsForRange(ctx context.Context, symbol string,
 			c.logger.Error("delete price bars", "symbol", symbol, "err", err)
 		}
 	}
-}
-
-func (c *PriceCache) backfillConcurrently(ctx context.Context, symbol string, gapStart, gapEnd time.Time) ([]types.Bar, error) {
-	return c.backfillGap(ctx, symbol, gapStart, gapEnd)
 }
 
 func (c *PriceCache) backfillGap(ctx context.Context, symbol string, gapStart, gapEnd time.Time) ([]types.Bar, error) {
@@ -523,12 +485,4 @@ func filterBarsByTime(bars []types.Bar, start, end time.Time) []types.Bar {
 		}
 	}
 	return filtered
-}
-
-func (c *PriceCache) BackfillGapForTest(ctx context.Context, symbol string, gapStart, gapEnd time.Time) ([]types.Bar, error) {
-	return c.backfillGap(ctx, symbol, gapStart, gapEnd)
-}
-
-func (c *PriceCache) BackfillConcurrentlyForTest(ctx context.Context, symbol string, gapStart, gapEnd time.Time) ([]types.Bar, error) {
-	return c.backfillConcurrently(ctx, symbol, gapStart, gapEnd)
 }

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -35,17 +36,17 @@ func TestIsNotAvailableError(t *testing.T) {
 }
 
 func TestContains(t *testing.T) {
-	assert.True(t, contains("hello world", "world"))
-	assert.False(t, contains("hello", "world"))
-	assert.True(t, contains("404: data not available", "404"))
-	assert.False(t, contains("", "x"))
+	assert.True(t, strings.Contains("hello world", "world"))
+	assert.False(t, strings.Contains("hello", "world"))
+	assert.True(t, strings.Contains("404: data not available", "404"))
+	assert.False(t, strings.Contains("", "x"))
 }
 
 func TestContainsSubstring(t *testing.T) {
-	assert.True(t, containsSubstring("hello world", "world"))
-	assert.False(t, containsSubstring("hello", "world"))
-	assert.True(t, containsSubstring("404: data", "404"))
-	assert.False(t, containsSubstring("", "x"))
+	assert.True(t, strings.Contains("hello world", "world"))
+	assert.False(t, strings.Contains("hello", "world"))
+	assert.True(t, strings.Contains("404: data", "404"))
+	assert.False(t, strings.Contains("", "x"))
 }
 
 type netError struct {

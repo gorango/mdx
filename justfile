@@ -5,9 +5,6 @@ set dotenv-load
 build:
 	go build ./...
 
-build-all:
-	go build ./cmd/...
-
 # --- Test ---
 
 test:
@@ -79,24 +76,20 @@ trade-balance MODE:
 trade-positions MODE:
 	go run ./cmd/trade -exchange {{MODE}} positions
 
-trade-order MODE SYMBOL SIDE AMOUNT *PRICE:
-	@if [ "{{PRICE}}" = "" ]; then \
-	    go run ./cmd/trade -exchange {{MODE}} order {{SYMBOL}} {{SIDE}} {{AMOUNT}}; \
-	else \
-	    go run ./cmd/trade -exchange {{MODE}} order {{SYMBOL}} {{SIDE}} {{AMOUNT}} {{PRICE}}; \
-	fi
+trade-order MODE SYMBOL SIDE AMOUNT *ARGS='':
+	@go run ./cmd/trade -exchange {{MODE}} order {{SYMBOL}} {{SIDE}} {{AMOUNT}} {{ARGS}}
 
 # --- CLI: Stream ---
 
 daemon CONFIG='config.yaml' NATS='nats://localhost:4222':
 	go run ./cmd/exchange -config {{CONFIG}} -nats {{NATS}}
 
-stream *BACKFILL='':
-	@if [ "{{BACKFILL}}" = "backfill" ]; then \
-	    go run ./cmd/stream -config config.yaml -backfill-ob; \
-	else \
-	    go run ./cmd/stream -config config.yaml; \
-	fi
+# Extra args (e.g. `-backfill-ob`) are passed through to cmd/stream.
+stream *ARGS='':
+	@go run ./cmd/stream {{ARGS}}
+
+stream-backfill:
+	@go run ./cmd/stream -backfill-ob
 
 ob-hydrate SYMBOL START END:
 	go run ./cmd/ob-hydrate \
@@ -130,10 +123,10 @@ sql-symbol-dates:
 	psql {{PG_URL}} -f scripts/sql/symbol_date_ranges.sql
 
 sql-bar-outliers START='' END='':
-	@bash -c 'if [ -z "{{START}}" ] && [ -z "{{END}}" ]; then bash scripts/sql/bar_outliers.sh; elif [ -z "{{END}}" ]; then bash scripts/sql/bar_outliers.sh {{START}}; else bash scripts/sql/bar_outliers.sh {{START}} {{END}}; fi'
+	@bash scripts/sql/bar_outliers.sh {{START}} {{END}}
 
 sql-ob-progress START='' END='':
-	@bash -c 'if [ -z "{{START}}" ] && [ -z "{{END}}" ]; then bash scripts/sql/ob_progress.sh; elif [ -z "{{END}}" ]; then bash scripts/sql/ob_progress.sh {{START}}; else bash scripts/sql/ob_progress.sh {{START}} {{END}}; fi'
+	@bash scripts/sql/ob_progress.sh {{START}} {{END}}
 
 # --- USDT.D ---
 

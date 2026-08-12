@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
-	"time"
 )
 
 type Timeframe struct {
@@ -68,10 +67,6 @@ func MustParse(tf string) Timeframe {
 		return TF1m
 	}
 	return t
-}
-
-func Duration(tf Timeframe) time.Duration {
-	return time.Duration(tf.Ms) * time.Millisecond
 }
 
 var (

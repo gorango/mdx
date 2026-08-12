@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"math"
 	"os"
 	"os/signal"
 	"sync"
@@ -151,7 +150,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			startExchange(ctx, "binance", client, cfg.Exchanges.Binance.Symbols, handler)
+			exchange.StartExchange(ctx, "binance", client, cfg.Exchanges.Binance.Symbols, handler, true)
 		}()
 	}
 
@@ -161,7 +160,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			startExchange(ctx, "bybit", client, cfg.Exchanges.Bybit.Symbols, handler)
+			exchange.StartExchange(ctx, "bybit", client, cfg.Exchanges.Bybit.Symbols, handler, true)
 		}()
 	}
 
@@ -171,7 +170,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			startExchange(ctx, "hyperliquid", client, cfg.Exchanges.Hyperliquid.Symbols, handler)
+			exchange.StartExchange(ctx, "hyperliquid", client, cfg.Exchanges.Hyperliquid.Symbols, handler, true)
 		}()
 	}
 
@@ -275,45 +274,5 @@ func startFundingRatePoller(ctx context.Context, cfg *config.Config, aggMgr *str
 		case <-ticker.C:
 			poll()
 		}
-	}
-}
-
-func startExchange(ctx context.Context, name string, client exchange.Client, symbols []string, handler types.EventHandler) {
-	fmt.Printf("[%s] Starting client with symbols: %v\n", name, symbols)
-
-	const maxReconnectDelay = 30 * time.Second
-	reconnectAttempts := 0
-
-	for {
-		select {
-		case <-ctx.Done():
-			fmt.Printf("[%s] Context cancelled, stopping\n", name)
-			_ = client.Close()
-			return
-		default:
-		}
-
-		if err := client.Connect(ctx); err != nil {
-			delay := time.Duration(math.Min(float64(maxReconnectDelay), float64(time.Second)*math.Pow(2, float64(reconnectAttempts))))
-			fmt.Printf("[%s] Failed to connect: %v (attempt %d, retrying in %v)\n", name, err, reconnectAttempts+1, delay)
-			reconnectAttempts++
-			time.Sleep(delay)
-			continue
-		}
-
-		if err := client.Subscribe(symbols, handler); err != nil {
-			delay := time.Duration(math.Min(float64(maxReconnectDelay), float64(time.Second)*math.Pow(2, float64(reconnectAttempts))))
-			fmt.Printf("[%s] Failed to subscribe: %v (attempt %d, retrying in %v)\n", name, err, reconnectAttempts+1, delay)
-			reconnectAttempts++
-			time.Sleep(delay)
-			continue
-		}
-
-		fmt.Printf("[%s] Connected and subscribed\n", name)
-
-		<-ctx.Done()
-		fmt.Printf("[%s] Closing connection\n", name)
-		_ = client.Close()
-		return
 	}
 }

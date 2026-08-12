@@ -71,9 +71,3 @@ func TestFlusherStop(t *testing.T) {
 	flusher := NewFlusher(nil, 1, 1000)
 	flusher.Stop()
 }
-
-func TestFindCharIndex(t *testing.T) {
-	assert.Equal(t, 0, findCharIndex("hello", 'h'))
-	assert.Equal(t, -1, findCharIndex("hello", 'x'))
-	assert.Equal(t, 2, findCharIndex("hello", 'l'))
-}

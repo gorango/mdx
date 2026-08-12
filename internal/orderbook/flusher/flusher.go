@@ -11,10 +11,6 @@ import (
 	"time"
 )
 
-func findCharIndex(s string, c rune) int {
-	return strings.IndexRune(s, c)
-}
-
 type FlusherStats struct {
 	BufferedBars    int
 	BufferedSymbols int
@@ -104,7 +100,7 @@ func (f *Flusher) Flush(ctx context.Context) error {
 
 		// Key format: "exchange:canonicalSymbol"
 		// e.g., "binance:BTC/USDT:PERP"
-		idx := findCharIndex(key, ':')
+		idx := strings.IndexRune(key, ':')
 		if idx == -1 {
 			fmt.Printf("[Flusher] ERROR: invalid key format: %q\n", key)
 			continue

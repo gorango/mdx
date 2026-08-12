@@ -25,24 +25,20 @@ type Aggregator struct {
 	symbol      string
 	bids        *treap.Treap // price (scaled) -> quantity
 	asks        *treap.Treap
-	barMath     *BarMath
 	mu          sync.RWMutex
 	bars        map[int64]*BarBuilder // Use a map for out-of-order tolerance
 	prevOI      *float64
 	prevFunding *float64
 }
 
-// BarMath contains common bar calculation functions
-type BarMath struct{}
-
-func (b *BarMath) VWAP(totalValue, totalVolume float64) float64 {
+func computeVWAP(totalValue, totalVolume float64) float64 {
 	if totalVolume == 0 {
 		return 0
 	}
 	return totalValue / totalVolume
 }
 
-func (b *BarMath) SpreadBPS(bestBid, bestAsk float64) float64 {
+func computeSpreadBPS(bestBid, bestAsk float64) float64 {
 	if bestBid == 0 || bestAsk <= bestBid {
 		return 0
 	}
@@ -72,11 +68,10 @@ type BarBuilder struct {
 // New creates a new streaming aggregator
 func New(symbol string) *Aggregator {
 	return &Aggregator{
-		symbol:  symbol,
-		bids:    treap.New(),
-		asks:    treap.New(),
-		barMath: &BarMath{},
-		bars:    make(map[int64]*BarBuilder),
+		symbol: symbol,
+		bids:   treap.New(),
+		asks:   treap.New(),
+		bars:   make(map[int64]*BarBuilder),
 	}
 }
 
@@ -175,7 +170,7 @@ func (a *Aggregator) processOrderBookUpdate(b *BarBuilder, update types.Orderboo
 	bestBid := a.bestBid()
 	bestAsk := a.bestAsk()
 	if bestBid > 0 && bestAsk > bestBid {
-		spread := a.barMath.SpreadBPS(bestBid, bestAsk)
+		spread := computeSpreadBPS(bestBid, bestAsk)
 		b.updateSpreadWelford(spread)
 	}
 
@@ -283,7 +278,7 @@ func (a *Aggregator) Finalize(liqCovered bool, flushUpToMinute int64) []types.Or
 }
 
 func (a *Aggregator) buildBar(b *BarBuilder, liqCovered bool) types.OrderbookBar {
-	vwap := a.barMath.VWAP(b.TotalValue, b.TotalVolume)
+	vwap := computeVWAP(b.TotalValue, b.TotalVolume)
 	avgSpread := b.SpreadMean
 	spreadStdDev := b.spreadStdDev()
 

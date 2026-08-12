@@ -9,19 +9,16 @@ import (
 	"gorango/mdx/internal/db"
 	"gorango/mdx/internal/pubsub"
 	"gorango/mdx/internal/rest"
-	"gorango/mdx/internal/subscription"
 	"gorango/mdx/internal/trading"
 	exchange "gorango/mdx/internal/ws"
 	"gorango/mdx/internal/ws/binance"
 	"gorango/mdx/internal/ws/bybit"
 	"gorango/mdx/internal/ws/hyperliquid"
 	"log/slog"
-	"math"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -139,15 +136,8 @@ func main() {
 		}
 	}
 
-	subMgr := subscription.NewManager()
-
-	if natsClient != nil {
-		if err := pubsub.HandleSubscriptionRequests(natsClient.GetConn(), subMgr, slog.Default()); err != nil {
-			fmt.Printf("Warning: Failed to setup subscription handlers: %v\n", err)
-		} else {
-			fmt.Println("NATS subscription handlers registered")
-		}
-	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	var wg sync.WaitGroup
 
@@ -158,10 +148,9 @@ func main() {
 		wg.Add(1)
 		exchangeClients["binance"] = binance.NewClient(cfg.Exchanges.Binance.Testnet)
 		exchangeClients["binance"].SetConnectionHandler(connHandler)
-		subMgr.RegisterClient("binance", exchangeClients["binance"])
 		go func() {
 			defer wg.Done()
-			startExchange(context.Background(), "binance", exchangeClients["binance"], cfg.Exchanges.Binance.Symbols)
+			exchange.StartExchange(ctx, "binance", exchangeClients["binance"], cfg.Exchanges.Binance.Symbols, nil, false)
 		}()
 	}
 
@@ -169,10 +158,9 @@ func main() {
 		wg.Add(1)
 		exchangeClients["bybit"] = bybit.NewClient(cfg.Exchanges.Bybit.Testnet)
 		exchangeClients["bybit"].SetConnectionHandler(connHandler)
-		subMgr.RegisterClient("bybit", exchangeClients["bybit"])
 		go func() {
 			defer wg.Done()
-			startExchange(context.Background(), "bybit", exchangeClients["bybit"], cfg.Exchanges.Bybit.Symbols)
+			exchange.StartExchange(ctx, "bybit", exchangeClients["bybit"], cfg.Exchanges.Bybit.Symbols, nil, false)
 		}()
 	}
 
@@ -180,10 +168,9 @@ func main() {
 		wg.Add(1)
 		exchangeClients["hyperliquid"] = hyperliquid.NewClient()
 		exchangeClients["hyperliquid"].SetConnectionHandler(connHandler)
-		subMgr.RegisterClient("hyperliquid", exchangeClients["hyperliquid"])
 		go func() {
 			defer wg.Done()
-			startExchange(context.Background(), "hyperliquid", exchangeClients["hyperliquid"], cfg.Exchanges.Hyperliquid.Symbols)
+			exchange.StartExchange(ctx, "hyperliquid", exchangeClients["hyperliquid"], cfg.Exchanges.Hyperliquid.Symbols, nil, false)
 		}()
 	}
 
@@ -192,6 +179,8 @@ func main() {
 	<-sigCh
 
 	fmt.Println("Shutting down...")
+
+	cancel()
 
 	for _, client := range exchangeClients {
 		_ = client.Close()
@@ -206,36 +195,4 @@ func main() {
 	wg.Wait()
 
 	fmt.Println("Shutdown complete")
-}
-
-func startExchange(ctx context.Context, name string, client exchange.Client, symbols []string) {
-	fmt.Printf("[%s] Starting client with symbols: %v\n", name, symbols)
-
-	const maxReconnectDelay = 30 * time.Second
-	reconnectAttempts := 0
-
-	for {
-		select {
-		case <-ctx.Done():
-			fmt.Printf("[%s] Context cancelled, stopping\n", name)
-			_ = client.Close()
-			return
-		default:
-		}
-
-		if err := client.Connect(ctx); err != nil {
-			delay := time.Duration(math.Min(float64(maxReconnectDelay), float64(time.Second)*math.Pow(2, float64(reconnectAttempts))))
-			fmt.Printf("[%s] Failed to connect: %v (attempt %d, retrying in %v)\n", name, err, reconnectAttempts+1, delay)
-			reconnectAttempts++
-			time.Sleep(delay)
-			continue
-		}
-
-		fmt.Printf("[%s] Connected (execution events only)\n", name)
-
-		<-ctx.Done()
-		fmt.Printf("[%s] Closing connection\n", name)
-		_ = client.Close()
-		return
-	}
 }

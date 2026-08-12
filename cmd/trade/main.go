@@ -139,35 +139,13 @@ func parseBalance(s string) map[string]float64 {
 		balances["USDT"] = 10000
 		return balances
 	}
-	for _, pair := range splitComma(s) {
-		kv := splitEqual(pair)
-		if len(kv) == 2 {
-			if v, err := strconv.ParseFloat(kv[1], 64); err == nil {
-				balances[kv[0]] = v
+	for _, pair := range strings.Split(s, ",") {
+		key, value, found := strings.Cut(pair, "=")
+		if found {
+			if v, err := strconv.ParseFloat(value, 64); err == nil {
+				balances[key] = v
 			}
 		}
 	}
 	return balances
-}
-
-func splitComma(s string) []string {
-	result := make([]string, 0)
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == ',' {
-			result = append(result, s[start:i])
-			start = i + 1
-		}
-	}
-	result = append(result, s[start:])
-	return result
-}
-
-func splitEqual(s string) []string {
-	for i := 0; i < len(s); i++ {
-		if s[i] == '=' {
-			return []string{s[:i], s[i+1:]}
-		}
-	}
-	return []string{s}
 }

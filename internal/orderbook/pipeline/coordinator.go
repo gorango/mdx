@@ -101,7 +101,7 @@ func (c *Coordinator) Run(ctx context.Context) error {
 	}
 
 afterFunding:
-	hours := c.generateHours()
+	hours := aggregator.GenerateHours(c.config.StartDate, c.config.EndDate)
 	c.logger.Info("Starting pipeline",
 		"symbol", c.config.Symbol,
 		"start", c.config.StartDate.Format("2006-01-02"),
@@ -241,10 +241,6 @@ afterFunding:
 	}
 
 	return nil
-}
-
-func (c *Coordinator) generateHours() []time.Time {
-	return aggregator.GenerateHours(c.config.StartDate, c.config.EndDate)
 }
 
 func (c *Coordinator) filterExisting(ctx context.Context, hours []time.Time) []time.Time {

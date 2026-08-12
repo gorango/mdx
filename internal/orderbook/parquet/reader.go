@@ -268,275 +268,8 @@ func (r *Reader) Close() error {
 	return nil
 }
 
-// ReadTrades reads all trades from the file
-func (r *Reader) ReadTrades() ([]Trade, error) {
-	stat, err := r.file.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("stat file: %w", err)
-	}
-
-	pf, err := parquet.OpenFile(r.file, stat.Size())
-	if err != nil {
-		return nil, fmt.Errorf("open parquet file: %w", err)
-	}
-
-	schema := pf.Schema()
-	columns := schema.Columns()
-
-	var trades []Trade
-	rowGroups := pf.RowGroups()
-
-	for _, rg := range rowGroups {
-		rows := rg.Rows()
-
-		buffer := make([]parquet.Row, 1000)
-		for {
-			n, err := rows.ReadRows(buffer)
-			if err != nil && err != io.EOF {
-				_ = rows.Close()
-				return nil, fmt.Errorf("read rows: %w", err)
-			}
-
-			for i := 0; i < n; i++ {
-				row := buffer[i]
-				trade := Trade{}
-
-				for j, col := range columns {
-					if j >= len(row) {
-						continue
-					}
-					val := row[j]
-
-					switch col[0] {
-					case "trade_time":
-						trade.TradeTime = val.Int64()
-					case "price":
-						trade.Price = parseFloat(val)
-					case "quantity":
-						trade.Quantity = parseFloat(val)
-					case "is_buyer_maker":
-						trade.IsBuyerMaker = val.Boolean()
-					}
-				}
-
-				trades = append(trades, trade)
-			}
-
-			if err == io.EOF {
-				break
-			}
-		}
-		_ = rows.Close()
-	}
-
-	return trades, nil
-}
-
-// ReadOrderBook reads all orderbook updates from the file
-func (r *Reader) ReadOrderBook() ([]OrderBook, error) {
-	stat, err := r.file.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("stat file: %w", err)
-	}
-
-	pf, err := parquet.OpenFile(r.file, stat.Size())
-	if err != nil {
-		return nil, fmt.Errorf("open parquet file: %w", err)
-	}
-
-	schema := pf.Schema()
-	columns := schema.Columns()
-
-	var updates []OrderBook
-	rowGroups := pf.RowGroups()
-
-	for _, rg := range rowGroups {
-		rows := rg.Rows()
-
-		buffer := make([]parquet.Row, 1000)
-		for {
-			n, err := rows.ReadRows(buffer)
-			if err != nil && err != io.EOF {
-				_ = rows.Close()
-				return nil, fmt.Errorf("read rows: %w", err)
-			}
-
-			for i := 0; i < n; i++ {
-				row := buffer[i]
-				update := OrderBook{}
-
-				for j, col := range columns {
-					if j >= len(row) {
-						continue
-					}
-					val := row[j]
-
-					switch col[0] {
-					case "event_time":
-						update.EventTime = val.Int64()
-					case "event_type":
-						update.EventType = normalizeEventType(val.String())
-					case "price":
-						update.Price = parseFloat(val)
-					case "quantity":
-						update.Quantity = parseFloat(val)
-					case "side":
-						update.Side = normalizeSide(val.String())
-					case "final_update_id":
-						update.FinalUpdateID = val.Int64()
-					case "prev_final_update_id":
-						update.PrevFinalUpdateID = val.Int64()
-					case "last_update_id":
-						update.LastUpdateID = val.Int64()
-					}
-				}
-
-				if update.FinalUpdateID == 0 && update.LastUpdateID != 0 {
-					update.FinalUpdateID = update.LastUpdateID
-				}
-				if update.EventType == "" && update.PrevFinalUpdateID == 0 {
-					update.EventType = "snapshot"
-				}
-
-				updates = append(updates, update)
-			}
-
-			if err == io.EOF {
-				break
-			}
-		}
-		_ = rows.Close()
-	}
-
-	return updates, nil
-}
-
-// ReadOpenInterest reads all OI updates from the file
-func (r *Reader) ReadOpenInterest() ([]OpenInterest, error) {
-	stat, err := r.file.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("stat file: %w", err)
-	}
-
-	pf, err := parquet.OpenFile(r.file, stat.Size())
-	if err != nil {
-		return nil, fmt.Errorf("open parquet file: %w", err)
-	}
-
-	schema := pf.Schema()
-	columns := schema.Columns()
-
-	var updates []OpenInterest
-	rowGroups := pf.RowGroups()
-
-	for _, rg := range rowGroups {
-		rows := rg.Rows()
-
-		buffer := make([]parquet.Row, 1000)
-		for {
-			n, err := rows.ReadRows(buffer)
-			if err != nil && err != io.EOF {
-				_ = rows.Close()
-				return nil, fmt.Errorf("read rows: %w", err)
-			}
-
-			for i := 0; i < n; i++ {
-				row := buffer[i]
-				update := OpenInterest{}
-
-				for j, col := range columns {
-					if j >= len(row) {
-						continue
-					}
-					val := row[j]
-
-					switch col[0] {
-					case "timestamp":
-						update.Timestamp = val.Int64()
-					case "sum_open_interest":
-						update.SumOpenInterest = parseFloat(val)
-					case "sum_open_interest_value":
-						update.SumOpenInterestValue = parseFloat(val)
-					}
-				}
-
-				updates = append(updates, update)
-			}
-
-			if err == io.EOF {
-				break
-			}
-		}
-		_ = rows.Close()
-	}
-
-	return updates, nil
-}
-
-// ReadLiquidations reads all liquidations from the file
-func (r *Reader) ReadLiquidations() ([]Liquidation, error) {
-	stat, err := r.file.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("stat file: %w", err)
-	}
-
-	pf, err := parquet.OpenFile(r.file, stat.Size())
-	if err != nil {
-		return nil, fmt.Errorf("open parquet file: %w", err)
-	}
-
-	schema := pf.Schema()
-	columns := schema.Columns()
-
-	var liquidations []Liquidation
-	rowGroups := pf.RowGroups()
-
-	for _, rg := range rowGroups {
-		rows := rg.Rows()
-
-		buffer := make([]parquet.Row, 1000)
-		for {
-			n, err := rows.ReadRows(buffer)
-			if err != nil && err != io.EOF {
-				_ = rows.Close()
-				return nil, fmt.Errorf("read rows: %w", err)
-			}
-
-			for i := 0; i < n; i++ {
-				row := buffer[i]
-				liq := Liquidation{}
-
-				for j, col := range columns {
-					if j >= len(row) {
-						continue
-					}
-					val := row[j]
-
-					switch col[0] {
-					case "trade_time":
-						liq.TradeTime = val.Int64()
-					case "last_filled_quantity":
-						liq.LastFilledQuantity = parseFloat(val)
-					case "side":
-						liq.Side = val.String()
-					}
-				}
-
-				liquidations = append(liquidations, liq)
-			}
-
-			if err == io.EOF {
-				break
-			}
-		}
-		_ = rows.Close()
-	}
-
-	return liquidations, nil
-}
-
-// StreamTrades streams trades through a callback function
-func (r *Reader) StreamTrades(callback func(Trade) error) error {
+// scan iterates over every row in the file, invoking visit for each row.
+func (r *Reader) scan(visit func(columns [][]string, row parquet.Row) error) error {
 	stat, err := r.file.Stat()
 	if err != nil {
 		return fmt.Errorf("stat file: %w", err)
@@ -547,11 +280,9 @@ func (r *Reader) StreamTrades(callback func(Trade) error) error {
 		return fmt.Errorf("open parquet file: %w", err)
 	}
 
-	schema := pf.Schema()
-	columns := schema.Columns()
-	rowGroups := pf.RowGroups()
+	columns := pf.Schema().Columns()
 
-	for _, rg := range rowGroups {
+	for _, rg := range pf.RowGroups() {
 		rows := rg.Rows()
 
 		buffer := make([]parquet.Row, 1000)
@@ -563,28 +294,7 @@ func (r *Reader) StreamTrades(callback func(Trade) error) error {
 			}
 
 			for i := 0; i < n; i++ {
-				row := buffer[i]
-				trade := Trade{}
-
-				for j, col := range columns {
-					if j >= len(row) {
-						continue
-					}
-					val := row[j]
-
-					switch col[0] {
-					case "trade_time":
-						trade.TradeTime = val.Int64()
-					case "price":
-						trade.Price = parseFloat(val)
-					case "quantity":
-						trade.Quantity = parseFloat(val)
-					case "is_buyer_maker":
-						trade.IsBuyerMaker = val.Boolean()
-					}
-				}
-
-				if err := callback(trade); err != nil {
+				if err := visit(columns, buffer[i]); err != nil {
 					_ = rows.Close()
 					return err
 				}
@@ -600,23 +310,36 @@ func (r *Reader) StreamTrades(callback func(Trade) error) error {
 	return nil
 }
 
+// StreamTrades streams trades through a callback function
+func (r *Reader) StreamTrades(callback func(Trade) error) error {
+	return r.scan(func(columns [][]string, row parquet.Row) error {
+		trade := Trade{}
+
+		for j, col := range columns {
+			if j >= len(row) {
+				continue
+			}
+			val := row[j]
+
+			switch col[0] {
+			case "trade_time":
+				trade.TradeTime = val.Int64()
+			case "price":
+				trade.Price = parseFloat(val)
+			case "quantity":
+				trade.Quantity = parseFloat(val)
+			case "is_buyer_maker":
+				trade.IsBuyerMaker = val.Boolean()
+			}
+		}
+
+		return callback(trade)
+	})
+}
+
 // StreamOrderBook streams orderbook updates through a callback function,
 // sorted by FinalUpdateID (then Price) to ensure correct orderbook state reconstruction.
 func (r *Reader) StreamOrderBook(callback func(OrderBook) error) error {
-	stat, err := r.file.Stat()
-	if err != nil {
-		return fmt.Errorf("stat file: %w", err)
-	}
-
-	pf, err := parquet.OpenFile(r.file, stat.Size())
-	if err != nil {
-		return fmt.Errorf("open parquet file: %w", err)
-	}
-
-	schema := pf.Schema()
-	columns := schema.Columns()
-	rowGroups := pf.RowGroups()
-
 	// Read and sort in bounded-size chunks to avoid OOM on large files.
 	var (
 		updates     = make([]OrderBook, 0, orderBookSortChunkSize)
@@ -651,67 +374,51 @@ func (r *Reader) StreamOrderBook(callback func(OrderBook) error) error {
 		return nil
 	}
 
-	for _, rg := range rowGroups {
-		rows := rg.Rows()
-		buffer := make([]parquet.Row, 1000)
-		for {
-			n, err := rows.ReadRows(buffer)
-			if err != nil && err != io.EOF {
-				_ = rows.Close()
-				return fmt.Errorf("read rows: %w", err)
+	if err := r.scan(func(columns [][]string, row parquet.Row) error {
+		update := OrderBook{}
+
+		for j, col := range columns {
+			if j >= len(row) {
+				continue
 			}
+			val := row[j]
 
-			for i := 0; i < n; i++ {
-				row := buffer[i]
-				update := OrderBook{}
-
-				for j, col := range columns {
-					if j >= len(row) {
-						continue
-					}
-					val := row[j]
-
-					switch col[0] {
-					case "event_time":
-						update.EventTime = val.Int64()
-					case "event_type":
-						update.EventType = normalizeEventType(val.String())
-					case "price":
-						update.Price = parseFloat(val)
-					case "quantity":
-						update.Quantity = parseFloat(val)
-					case "side":
-						update.Side = normalizeSide(val.String())
-					case "final_update_id":
-						update.FinalUpdateID = val.Int64()
-					case "prev_final_update_id":
-						update.PrevFinalUpdateID = val.Int64()
-					case "last_update_id":
-						update.LastUpdateID = val.Int64()
-					}
-				}
-
-				if update.FinalUpdateID == 0 && update.LastUpdateID != 0 {
-					update.FinalUpdateID = update.LastUpdateID
-				}
-				if update.EventType == "" && update.PrevFinalUpdateID == 0 {
-					update.EventType = "snapshot"
-				}
-
-				updates = append(updates, update)
-				if len(updates) >= orderBookSortChunkSize {
-					if err := spillChunk(); err != nil {
-						_ = rows.Close()
-						return fmt.Errorf("spill sorted chunk: %w", err)
-					}
-				}
-			}
-
-			if err == io.EOF {
-				break
+			switch col[0] {
+			case "event_time":
+				update.EventTime = val.Int64()
+			case "event_type":
+				update.EventType = normalizeEventType(val.String())
+			case "price":
+				update.Price = parseFloat(val)
+			case "quantity":
+				update.Quantity = parseFloat(val)
+			case "side":
+				update.Side = normalizeSide(val.String())
+			case "final_update_id":
+				update.FinalUpdateID = val.Int64()
+			case "prev_final_update_id":
+				update.PrevFinalUpdateID = val.Int64()
+			case "last_update_id":
+				update.LastUpdateID = val.Int64()
 			}
 		}
-		_ = rows.Close()
+
+		if update.FinalUpdateID == 0 && update.LastUpdateID != 0 {
+			update.FinalUpdateID = update.LastUpdateID
+		}
+		if update.EventType == "" && update.PrevFinalUpdateID == 0 {
+			update.EventType = "snapshot"
+		}
+
+		updates = append(updates, update)
+		if len(updates) >= orderBookSortChunkSize {
+			if err := spillChunk(); err != nil {
+				return fmt.Errorf("spill sorted chunk: %w", err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	if len(chunkPaths) == 0 {
@@ -788,131 +495,50 @@ func (r *Reader) StreamOrderBook(callback func(OrderBook) error) error {
 
 // StreamOpenInterest streams OI updates through a callback function
 func (r *Reader) StreamOpenInterest(callback func(OpenInterest) error) error {
-	stat, err := r.file.Stat()
-	if err != nil {
-		return fmt.Errorf("stat file: %w", err)
-	}
+	return r.scan(func(columns [][]string, row parquet.Row) error {
+		update := OpenInterest{}
 
-	pf, err := parquet.OpenFile(r.file, stat.Size())
-	if err != nil {
-		return fmt.Errorf("open parquet file: %w", err)
-	}
-
-	schema := pf.Schema()
-	columns := schema.Columns()
-	rowGroups := pf.RowGroups()
-
-	for _, rg := range rowGroups {
-		rows := rg.Rows()
-
-		buffer := make([]parquet.Row, 1000)
-		for {
-			n, err := rows.ReadRows(buffer)
-			if err != nil && err != io.EOF {
-				_ = rows.Close()
-				return fmt.Errorf("read rows: %w", err)
+		for j, col := range columns {
+			if j >= len(row) {
+				continue
 			}
+			val := row[j]
 
-			for i := 0; i < n; i++ {
-				row := buffer[i]
-				update := OpenInterest{}
-
-				for j, col := range columns {
-					if j >= len(row) {
-						continue
-					}
-					val := row[j]
-
-					switch col[0] {
-					case "timestamp":
-						update.Timestamp = val.Int64()
-					case "sum_open_interest":
-						update.SumOpenInterest = parseFloat(val)
-					case "sum_open_interest_value":
-						update.SumOpenInterestValue = parseFloat(val)
-					}
-				}
-
-				if err := callback(update); err != nil {
-					_ = rows.Close()
-					return err
-				}
-			}
-
-			if err == io.EOF {
-				break
+			switch col[0] {
+			case "timestamp":
+				update.Timestamp = val.Int64()
+			case "sum_open_interest":
+				update.SumOpenInterest = parseFloat(val)
+			case "sum_open_interest_value":
+				update.SumOpenInterestValue = parseFloat(val)
 			}
 		}
-		_ = rows.Close()
-	}
 
-	return nil
+		return callback(update)
+	})
 }
 
 // StreamLiquidations streams liquidations through a callback function
 func (r *Reader) StreamLiquidations(callback func(Liquidation) error) error {
-	stat, err := r.file.Stat()
-	if err != nil {
-		return fmt.Errorf("stat file: %w", err)
-	}
+	return r.scan(func(columns [][]string, row parquet.Row) error {
+		liq := Liquidation{}
 
-	pf, err := parquet.OpenFile(r.file, stat.Size())
-	if err != nil {
-		return fmt.Errorf("open parquet file: %w", err)
-	}
-
-	schema := pf.Schema()
-	columns := schema.Columns()
-	rowGroups := pf.RowGroups()
-
-	for _, rg := range rowGroups {
-		rows := rg.Rows()
-
-		buffer := make([]parquet.Row, 1000)
-		for {
-			n, err := rows.ReadRows(buffer)
-			if err != nil && err != io.EOF {
-				_ = rows.Close()
-				return fmt.Errorf("read rows: %w", err)
+		for j, col := range columns {
+			if j >= len(row) {
+				continue
 			}
+			val := row[j]
 
-			for i := 0; i < n; i++ {
-				row := buffer[i]
-				liq := Liquidation{}
-
-				for j, col := range columns {
-					if j >= len(row) {
-						continue
-					}
-					val := row[j]
-
-					switch col[0] {
-					case "trade_time":
-						liq.TradeTime = val.Int64()
-					case "last_filled_quantity":
-						liq.LastFilledQuantity = parseFloat(val)
-					case "side":
-						liq.Side = val.String()
-					}
-				}
-
-				if err := callback(liq); err != nil {
-					_ = rows.Close()
-					return err
-				}
-			}
-
-			if err == io.EOF {
-				break
+			switch col[0] {
+			case "trade_time":
+				liq.TradeTime = val.Int64()
+			case "last_filled_quantity":
+				liq.LastFilledQuantity = parseFloat(val)
+			case "side":
+				liq.Side = val.String()
 			}
 		}
-		_ = rows.Close()
-	}
 
-	return nil
-}
-
-// File returns the underlying file
-func (r *Reader) File() *os.File {
-	return r.file
+		return callback(liq)
+	})
 }

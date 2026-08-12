@@ -75,19 +75,3 @@ func TestDownloadResultStruct(t *testing.T) {
 	err := result.Cleanup()
 	assert.NoError(t, err)
 }
-
-func TestReadCloserStruct(t *testing.T) {
-	rc := &ReadCloser{}
-	assert.NotNil(t, rc)
-}
-
-func TestCleanupStaleTempFiles(t *testing.T) {
-	tmpDir := os.TempDir()
-	tmpFile, err := os.CreateTemp(tmpDir, "test_*.parquet")
-	assert.NoError(t, err)
-	_ = tmpFile.Close()
-	defer func() { _ = os.Remove(tmpFile.Name()) }()
-
-	err = CleanupStaleTempFiles()
-	assert.NoError(t, err)
-}

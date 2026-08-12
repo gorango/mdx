@@ -1,9 +1,7 @@
 package streaming
 
 import (
-	"fmt"
 	"gorango/mdx/domain/types"
-	"math"
 	"sync"
 	"time"
 )
@@ -69,20 +67,6 @@ func (m *Manager) FlushAll() map[string][]types.OrderbookBar {
 	return result
 }
 
-// FlushSymbol flushes all bars for a specific symbol (used for shutdown).
-func (m *Manager) FlushSymbol(symbol string) ([]types.OrderbookBar, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	agg, exists := m.aggregators[symbol]
-	if !exists {
-		return nil, fmt.Errorf("no aggregator for symbol: %s", symbol)
-	}
-
-	// For explicit flushes / shutdown, flush everything (MaxInt64)
-	return agg.Finalize(m.liquidationFeedAvailable, math.MaxInt64), nil
-}
-
 // ResetDepth clears the orderbook treap for the given symbol.
 // Should be called after a WebSocket reconnect to discard stale levels.
 func (m *Manager) ResetDepth(symbol string) {
@@ -91,15 +75,4 @@ func (m *Manager) ResetDepth(symbol string) {
 	if agg, exists := m.aggregators[symbol]; exists {
 		agg.ResetDepth()
 	}
-}
-
-func (m *Manager) GetSymbols() []string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	symbols := make([]string, 0, len(m.aggregators))
-	for symbol := range m.aggregators {
-		symbols = append(symbols, symbol)
-	}
-	return symbols
 }

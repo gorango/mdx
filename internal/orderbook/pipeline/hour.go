@@ -65,10 +65,6 @@ func NewHourProcessor(apiKey, symbol, exchange string, database *db.DB, fundingH
 	}
 }
 
-func (p *HourProcessor) SetFundingHistory(fundingHistory []api.FundingPoint) {
-	p.fundingHistory = fundingHistory
-}
-
 func (p *HourProcessor) SetDryRun(dryRun bool, outputDir string) {
 	p.dryRun = dryRun
 	p.outputDir = outputDir

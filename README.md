@@ -19,7 +19,6 @@ High-performance market data microservice for algorithmic trading — WebSocket 
 | `internal/trading` | Trading connectors: REST, paper trader |
 | `internal/orderbook` | Orderbook bar aggregation, flusher, batch hydration pipeline, parquet |
 | `internal/streamer` | Multi-exchange streaming aggregator and flusher |
-| `internal/subscription` | Subscription manager for dynamic symbol subscription |
 
 ## Commands
 
@@ -144,8 +143,6 @@ market.{exchange}.{symbol}.bars.{timeframe}
 Control plane (request-reply):
 
 ```
-subscriptions.subscribe
-subscriptions.unsubscribe
 history.bars
 ```
 

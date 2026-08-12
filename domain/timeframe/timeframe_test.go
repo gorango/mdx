@@ -100,14 +100,6 @@ func TestMustParseStandard(t *testing.T) {
 	}
 }
 
-func TestDuration(t *testing.T) {
-	tf, _ := Parse("5m")
-	d := Duration(tf)
-	if d.String() != "5m0s" {
-		t.Errorf("Duration(5m) = %v, want 5m0s", d)
-	}
-}
-
 func TestEdgeCases(t *testing.T) {
 	got, err := Parse("1m")
 	if err != nil {

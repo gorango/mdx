@@ -213,7 +213,7 @@ func TestBackfillGap(t *testing.T) {
 
 	cache := NewPriceCache("binance", nil, mockClient, nil)
 
-	fetched, err := cache.BackfillGapForTest(context.Background(), "BTC/USDT", startTime, endTime)
+	fetched, err := cache.backfillGap(context.Background(), "BTC/USDT", startTime, endTime)
 	assert.NoError(t, err)
 	assert.Greater(t, len(fetched), 0)
 }
@@ -252,7 +252,7 @@ func TestBackfillConcurrentlyFetchesMultipleChunks(t *testing.T) {
 
 	cache := NewPriceCache("binance", nil, mockClient, nil)
 
-	fetched, err := cache.BackfillConcurrentlyForTest(context.Background(), "BTC/USDT", startTime, endTime)
+	fetched, err := cache.backfillGap(context.Background(), "BTC/USDT", startTime, endTime)
 	assert.NoError(t, err)
 
 	mu.Lock()
@@ -490,7 +490,7 @@ func TestBackfillWithRetryOnRateLimit(t *testing.T) {
 
 	cache := NewPriceCache("binance", nil, mockClient, nil)
 
-	fetched, err := cache.BackfillGapForTest(context.Background(), "BTC/USDT", startTime, endTime)
+	fetched, err := cache.backfillGap(context.Background(), "BTC/USDT", startTime, endTime)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(fetched))
 	assert.Equal(t, 2, attempt, "should retry once after rate limit")
