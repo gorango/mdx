@@ -380,35 +380,73 @@ func (s *Streamer) startOpenInterestPoller() {
 		return
 	}
 
+	restClient := rest.NewBinance(rest.Config{Testnet: s.cfg.Exchanges.Binance.Testnet})
+
+	// Sequential per-symbol polling in a 5s tick starves late symbols: with
+	// ~110 symbols × HTTP round-trip latency the full cycle can exceed the
+	// tick, so most symbols get OI samples only sporadically (many bars end up
+	// with a single stale sample or none — the root of sparse oi_change data).
+	// Poll the whole roster concurrently each tick with a bounded worker pool.
+	const oiWorkers = 10
+
 	go func() {
-		restClient := rest.NewBinance(rest.Config{Testnet: s.cfg.Exchanges.Binance.Testnet})
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
+
+		sem := make(chan struct{}, oiWorkers)
+		symbols := s.cfg.Exchanges.Binance.Symbols
 
 		for {
 			select {
 			case <-s.ctx.Done():
 				return
 			case <-ticker.C:
-				for _, symbol := range s.cfg.Exchanges.Binance.Symbols {
-					oi, err := restClient.FetchOpenInterest(s.ctx, symbol)
-					if err != nil {
-						fmt.Printf("[OI] Failed to fetch for %s: %v\n", symbol, err)
-						continue
-					}
+				start := time.Now()
+				var wg sync.WaitGroup
+				var okMu sync.Mutex
+				ok := 0
 
-					event := types.Event{
-						Type:      types.EventTypeOpenInterest,
-						Symbol:    symbol,
-						Timestamp: time.Now().UnixMilli(),
-						Data: types.OpenInterest{
-							Value: oi,
-						},
+				for _, symbol := range symbols {
+					select {
+					case sem <- struct{}{}:
+					case <-s.ctx.Done():
+						return
 					}
+					wg.Add(1)
+					go func(sym string) {
+						defer wg.Done()
+						defer func() { <-sem }()
 
-					if err := s.aggMgr.ProcessEvent(event); err != nil {
-						fmt.Printf("[OI] Error processing event for %s: %v\n", symbol, err)
-					}
+						oi, err := restClient.FetchOpenInterest(s.ctx, sym)
+						if err != nil {
+							fmt.Printf("[OI] Failed to fetch for %s: %v\n", sym, err)
+							return
+						}
+						okMu.Lock()
+						ok++
+						okMu.Unlock()
+
+						event := types.Event{
+							Type:      types.EventTypeOpenInterest,
+							Symbol:    sym,
+							Timestamp: time.Now().UnixMilli(),
+							Data: types.OpenInterest{
+								Value: oi,
+							},
+						}
+						if err := s.aggMgr.ProcessEvent(event); err != nil {
+							fmt.Printf("[OI] Error processing event for %s: %v\n", sym, err)
+						}
+					}(symbol)
+				}
+
+				wg.Wait()
+				elapsed := time.Since(start)
+				if elapsed > 5*time.Second {
+					fmt.Printf(
+						"[OI] WARN cycle took %v (> 5s tick) — %d/%d symbols sampled; OI samples may be stale\n",
+						elapsed, ok, len(symbols),
+					)
 				}
 			}
 		}
@@ -463,7 +501,12 @@ type statusHandler struct {
 
 func (h *statusHandler) OnStatusChange(name string, status exchange.ConnectionStatus) {
 	if name == "binance" && h.aggMgr != nil {
-		h.aggMgr.SetLiquidationFeedAvailable(status == exchange.ConnectionStatusConnected)
+		available := status == exchange.ConnectionStatusConnected
+		h.aggMgr.SetLiquidationFeedAvailable(available)
+		h.logger.Info("liquidation feed status",
+			"available", available,
+			"connection", status,
+		)
 	}
 
 	switch status {
@@ -541,7 +584,11 @@ func (s *Streamer) runOBBackfill() {
 			EndDate:   end,
 			Exchange:  exchange,
 			APIKey:    apiKey,
-			Overwrite: true,
+			// Gap-fill only: never DELETE + re-insert the hour from cryptoHFT.
+			// The upsert merge (higher-trade-count bar wins, COALESCE on
+			// OI/funding/liq, GREATEST on liq_covered) preserves the live
+			// stream's higher-quality bars and fills only what is NULL/missing.
+			Overwrite: false,
 		}
 
 		coordinator := pipeline.NewCoordinator(config, s.database)

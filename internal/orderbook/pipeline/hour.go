@@ -142,6 +142,17 @@ func (p *HourProcessor) Process(ctx context.Context, date string, hour int) (*Ho
 
 	liqSucceeded := false
 	if err := p.processLiquidations(date, hourStr, agg); err != nil {
+		// Don't silently drop the failure: a missing liquidations parquet is
+		// what stamps liq_covered=0 on every bar of this symbol-hour, and
+		// downstream (research) cannot distinguish "no liquidations occurred"
+		// from "no liquidation data was downloaded".  Log it so gaps are
+		// observable, retryable, and auditable per symbol/date/hour.
+		p.logger.Warn("liquidations parquet unavailable — liq_covered=0 for this hour",
+			"symbol", p.symbol,
+			"date", date,
+			"hour", hourStr,
+			"error", err,
+		)
 	} else {
 		liqSucceeded = true
 	}

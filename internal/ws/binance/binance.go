@@ -22,6 +22,15 @@ const (
 	testnetMarketURL  = "wss://stream.binancefuture.com/market/stream"
 	maxReconnectDelay = 30 * time.Second
 
+	// stallTimeout is the read-deadline that detects silent WS stalls.  Binance
+	// sends a ping frame every 3 minutes; a connection that stops sending
+	// anything (pings included) for stallTimeout is dead even though the TCP
+	// socket stays half-open — without this, readLoop blocks forever and the
+	// stream silently loses trades/funding/liquidations while liq_covered
+	// still reports the connection as up.  4 minutes is safely past the 3m
+	// ping interval so quiet-but-healthy connections never trip it.
+	stallTimeout = 4 * time.Minute
+
 	maxSymbolsPerDepthConn = 10
 )
 
@@ -198,6 +207,16 @@ func (c *Client) dialCombined(dialer websocket.Dialer, baseURL string, streams [
 	if err != nil {
 		return nil, err
 	}
+
+	// Silent-stall detection: set an initial read deadline and extend it on
+	// every ping (gorilla handles control frames internally, so ReadMessage
+	// never sees them — the ping handler is the only place a quiet-but-alive
+	// connection can refresh the deadline).
+	_ = conn.SetReadDeadline(time.Now().Add(stallTimeout))
+	conn.SetPingHandler(func(appData string) error {
+		_ = conn.SetReadDeadline(time.Now().Add(stallTimeout))
+		return conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(10*time.Second))
+	})
 	return conn, nil
 }
 
@@ -238,6 +257,13 @@ func (c *Client) readLoop(wc *wsConn) {
 		default:
 		}
 
+		// Extend the read deadline on every data message; a stall (no data AND
+		// no pings for stallTimeout) makes ReadMessage return a timeout, which
+		// falls through to handleDisconnect → reconnect below.
+		if err := wc.conn.SetReadDeadline(time.Now().Add(stallTimeout)); err != nil {
+			c.handleDisconnect(wc)
+			return
+		}
 		_, message, err := wc.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
