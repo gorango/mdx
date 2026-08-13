@@ -77,22 +77,19 @@ func (p *HourProcessor) Process(ctx context.Context, date string, hour int) (*Ho
 		Hour: hour,
 	}
 
+	// Gap-fill merge (Overwrite:false): process the hour whether or not bars
+	// already exist, and let InsertOrderbookBars' per-bar upsert merge them
+	// (higher-trade-count bar wins, COALESCE fills NULL OI/funding/liq,
+	// GREATEST liq_covered).  Previously this skipped the WHOLE hour when any
+	// bar existed, so a partial hour (stream outage) never got its missing
+	// bars filled and the documented merge never ran.  Use -resume (the
+	// coordinator's filterExisting) for the explicit skip-existing path.
 	if !p.dryRun && !p.overwrite {
-		hourTime, _ := time.ParseInLocation("2006-01-02T15:04:05", date+"T"+hourStr+":00:00", time.UTC)
-		dbExchange := symbols.MapExchangeToDB(p.exchange)
-		exists, err := p.db.HourExists(ctx, dbExchange, p.symbol, hourTime)
-		if err != nil {
-			return nil, fmt.Errorf("check hour exists: %w", err)
-		}
-		if exists {
-			p.logger.Debug("Hour already exists, skipping",
-				"symbol", p.symbol,
-				"date", date,
-				"hour", hour,
-			)
-			result.Skipped = true
-			return result, nil
-		}
+		p.logger.Debug("Gap-fill merge",
+			"symbol", p.symbol,
+			"date", date,
+			"hour", hour,
+		)
 	}
 
 	p.logger.Debug("Processing hour",

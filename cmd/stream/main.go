@@ -11,7 +11,7 @@ import (
 func main() {
 	configPath := flag.String("config", "config.yaml", "Path to config file")
 	natsURL := flag.String("nats", "nats://localhost:4222", "NATS server URL")
-	backfillOB := flag.Bool("backfill-ob", false, "Enable hourly ob-hydrate backfill for latest 2 hours (overwrite)")
+	backfillOB := flag.Bool("backfill-ob", false, "Enable hourly cryptoHFT ob-hydrate backfill of the previous two hours (overwrite: rebuild from cryptoHFT + settled Binance funding; each hour swept twice so a delayed tail is still captured)")
 	flag.Parse()
 
 	s, err := streamer.New(streamer.Options{

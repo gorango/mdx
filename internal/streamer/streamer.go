@@ -584,11 +584,16 @@ func (s *Streamer) runOBBackfill() {
 			EndDate:   end,
 			Exchange:  exchange,
 			APIKey:    apiKey,
-			// Gap-fill only: never DELETE + re-insert the hour from cryptoHFT.
-			// The upsert merge (higher-trade-count bar wins, COALESCE on
-			// OI/funding/liq, GREATEST on liq_covered) preserves the live
-			// stream's higher-quality bars and fills only what is NULL/missing.
-			Overwrite: false,
+			// OVERWRITE: rebuild the previous hour from cryptoHFT parquets +
+			// settled Binance funding every hour.  The live stream may be down,
+			// so the DB must be reconstructible from the historical source
+			// alone; overwriting keeps every bar consistent (settled funding,
+			// cryptoHFT orderbook/trades/OI/liq) instead of a mix of live and
+			// historical cadences.  Overwrite:false runs are the manual
+			// gap-fill-merge path (per-bar upsert in InsertOrderbookBars:
+			// higher-trade-count bar wins, COALESCE fills NULL OI/funding/liq,
+			// GREATEST liq_covered).
+			Overwrite: true,
 		}
 
 		coordinator := pipeline.NewCoordinator(config, s.database)
