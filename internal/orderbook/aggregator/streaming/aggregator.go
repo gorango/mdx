@@ -341,16 +341,11 @@ func (a *Aggregator) buildBar(b *BarBuilder, liqCovered bool) types.OrderbookBar
 		sv := b.LiqShortVol
 		liqLongVol = &lv
 		liqShortVol = &sv
-	} else {
-		if b.LiqLongVol > 0 {
-			llv := b.LiqLongVol
-			liqLongVol = &llv
-		}
-		if b.LiqShortVol > 0 {
-			lsv := b.LiqShortVol
-			liqShortVol = &lsv
-		}
 	}
+	// !liqCovered → volumes stay NULL (no liquidation source): partial capture
+	// on a failed source is not trustworthy, and "no liquidations" (covered,
+	// volumes=0) must stay distinct from "no data" (uncovered, volumes=NULL).
+	// Parity with internal/orderbook/aggregator/aggregator.go.
 
 	liqCoveredInt := 0
 	if liqCovered {

@@ -301,18 +301,16 @@ func (a *Aggregator) Finalize(liqCovered bool) []types.OrderbookBar {
 
 		// Liquidations: when covered, always emit values (even zero) so
 		// downstream can distinguish "true zero liquidations" from "missing data".
+		// When NOT covered (vendor parquet 404 / stream source down), emit NULL
+		// for the volumes — never partial, never zero — so "no liquidations
+		// occurred" (covered=1, volumes=0) stays distinct from "no liquidation
+		// data" (covered=0, volumes=NULL).  Partial capture on a failed source
+		// is not trustworthy.
 		if liqCovered {
 			lv := builder.LiqLongVol
 			sv := builder.LiqShortVol
 			bar.LiqLongVol = &lv
 			bar.LiqShortVol = &sv
-		} else {
-			if builder.LiqLongVol > 0 {
-				bar.LiqLongVol = &builder.LiqLongVol
-			}
-			if builder.LiqShortVol > 0 {
-				bar.LiqShortVol = &builder.LiqShortVol
-			}
 		}
 
 		// Depth metrics (sum/count for parity with streaming aggregator)
