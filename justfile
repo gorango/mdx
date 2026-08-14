@@ -97,6 +97,11 @@ ob-hydrate SYMBOL START END:
 	    -start {{START}} \
 	    -end {{END}}
 
+# Re-derive ONLY the liquidation columns from cryptoHFT liquidations parquets
+# across all symbols (vendor 404 → liq NULL / liq_covered=0).  Non-liq columns untouched.
+ob-backfill-liq START='2025-07-01' END='2026-08-01' WORKERS='8':
+	@go run ./cmd/ob-backfill-liq -start {{START}} -end {{END}} -workers {{WORKERS}}
+
 ob-hydrate-all START END WORKERS='4':
 	nohup bash scripts/hydrate-all.sh {{START}} {{END}} {{WORKERS}} > /tmp/ob-hydrate-{{START}}-{{END}}.log 2>&1 &
 	@echo "PID: $$! | log: tail -f /tmp/ob-hydrate-{{START}}-{{END}}.log"

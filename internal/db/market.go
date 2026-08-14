@@ -303,6 +303,108 @@ func (db *DB) HourExists(ctx context.Context, exchange, symbol string, hour time
 	return count > 0, nil
 }
 
+// SetLiqUnknownRange stamps a symbol's bars in [start, end) with the
+// "no liquidation data" encoding: liq_long_vol / liq_short_vol = NULL and
+// liq_covered = 0.  Used when the cryptohftdata liquidations parquet is
+// unavailable (404) for that period — the volumes are UNKNOWN, not zero.
+func (db *DB) SetLiqUnknownRange(ctx context.Context, exchange, symbol string, start, end time.Time) (int64, error) {
+	result, err := db.pool.Exec(ctx, `
+		UPDATE orderbook_bars
+		SET liq_long_vol = NULL, liq_short_vol = NULL, liq_covered = 0
+		WHERE exchange = $1 AND symbol = $2 AND timestamp >= $3 AND timestamp < $4
+	`, exchange, symbol, start, end)
+	if err != nil {
+		return 0, fmt.Errorf("set liq unknown range: %w", err)
+	}
+	return result.RowsAffected(), nil
+}
+
+// SetLiqBars writes the aggregated liquidation volumes + liq_covered = 1 for a
+// set of 1m bars (from a successfully-downloaded liquidations parquet).  Only
+// the liquidation columns are touched; every other column is preserved.
+func (db *DB) SetLiqBars(ctx context.Context, exchange, symbol string, ts []int64, liqLong, liqShort []float64) (int64, error) {
+	if len(ts) == 0 {
+		return 0, nil
+	}
+	result, err := db.pool.Exec(ctx, `
+		UPDATE orderbook_bars ob
+		SET liq_long_vol = u.liq_long, liq_short_vol = u.liq_short, liq_covered = 1
+		FROM unnest($1::bigint[], $2::float8[], $3::float8[]) AS u(ts, liq_long, liq_short)
+		WHERE ob.exchange = $4 AND ob.symbol = $5
+		  AND ob.timestamp = to_timestamp(u.ts::double precision / 1000.0)
+	`, ts, liqLong, liqShort, exchange, symbol)
+	if err != nil {
+		return 0, fmt.Errorf("set liq bars: %w", err)
+	}
+	return result.RowsAffected(), nil
+}
+
+// ── ob-backfill-liq resume progress ───────────────────────────────────────────
+
+// InitLiqProgress creates the resume-progress table used by
+// cmd/ob-backfill-liq: one row per fully-processed (symbol, hour).  A restart
+// skips rows already present, so a multi-hour backfill can resume instead of
+// re-doing everything.
+func (db *DB) InitLiqProgress(ctx context.Context) error {
+	_, err := db.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS liq_backfill_progress (
+			symbol  TEXT   NOT NULL,
+			hour_ts BIGINT NOT NULL,
+			PRIMARY KEY (symbol, hour_ts)
+		)`)
+	if err != nil {
+		return fmt.Errorf("create liq backfill progress table: %w", err)
+	}
+	return nil
+}
+
+// LiqProgressDone returns the set of hour_ts already processed for a symbol.
+func (db *DB) LiqProgressDone(ctx context.Context, symbol string) (map[int64]bool, error) {
+	rows, err := db.pool.Query(ctx, `
+		SELECT hour_ts FROM liq_backfill_progress WHERE symbol = $1`, symbol)
+	if err != nil {
+		return nil, fmt.Errorf("query liq progress: %w", err)
+	}
+	defer rows.Close()
+	done := make(map[int64]bool)
+	for rows.Next() {
+		var ts int64
+		if err := rows.Scan(&ts); err != nil {
+			return nil, fmt.Errorf("scan liq progress: %w", err)
+		}
+		done[ts] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("liq progress rows: %w", err)
+	}
+	return done, nil
+}
+
+// MarkLiqProgress records processed hours so a restarted run can skip them.
+func (db *DB) MarkLiqProgress(ctx context.Context, symbol string, hourTs []int64) error {
+	if len(hourTs) == 0 {
+		return nil
+	}
+	_, err := db.pool.Exec(ctx, `
+		INSERT INTO liq_backfill_progress (symbol, hour_ts)
+		SELECT $1, u.ts FROM unnest($2::bigint[]) AS u(ts)
+		ON CONFLICT (symbol, hour_ts) DO NOTHING
+	`, symbol, hourTs)
+	if err != nil {
+		return fmt.Errorf("mark liq progress: %w", err)
+	}
+	return nil
+}
+
+// ResetLiqProgress clears all resume markers (forces a full re-run).
+func (db *DB) ResetLiqProgress(ctx context.Context) error {
+	_, err := db.pool.Exec(ctx, `TRUNCATE liq_backfill_progress`)
+	if err != nil {
+		return fmt.Errorf("reset liq progress: %w", err)
+	}
+	return nil
+}
+
 func (db *DB) QueryOrderbookBarsStream(ctx context.Context, exchange, symbol string, start, end time.Time) (interface {
 	Next() bool
 	Scan(...any) error
