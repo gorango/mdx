@@ -1,0 +1,121 @@
+{
+  "_comment": "Binance addresses from ChainQuery exchange-addresses list (PoR-derived, BitMEX vanity excluded) + Etherscan-confirmed hot wallets. BTC entries are PoR cold wallets; ETH entries are hot+cold. Update periodically.",
+  "exchanges": {
+    "binance": {
+      "kind": "cold",
+      "source": "chainquery_por+etherscan",
+      "chains": {
+        "bitcoin": [
+          "bc1qchctnvmdva5z9vrpxkkxck64v7nmzdtyxsrq64",
+          "bc1qk4m9zv5tnxf2pddd565wugsjrkqkfn90aa0wypj2530f4f7tjwrqntpens",
+          "bc1q89zqat5x9cye7v2uwun2ds7980p25n02g7g90w",
+          "bc1q6uquuhn480v52nf58j9rhpkcfg7rfkl48h9lw0",
+          "bc1qqmeleth3nuwhsfzr0djf64hmxp43h0v7ny5sam",
+          "bc1ql26z8vf29ufamvs8mhjndk93sdegsk03clpuh8",
+          "bc1q8vhpznh3l8jrzxl6z02p9ukyg7e32vys6e3hr6",
+          "bc1qr9sa5dcerueqzewtja0pcge307emax7jxctcas",
+          "bc1q55q234h9wetrgl3xxfqcre2r03r57zeu9f9yae",
+          "bc1qv4fcs2rjr9zv4kxpv3cck3wy6mmrzeg0x08d63",
+          "bc1q886luh2aq6kf9rjt64uwwfqns0fllwhj6yke3n",
+          "bc1qqk8x8w7frfuafrt5nlmsn49jhfsqxsl0fva7qm",
+          "bc1qwhaf7rnfejrnvu4ztnvcyxp37n4k3yr5gw6duc",
+          "bc1q2lthdvkselj9k60gtjhxa0fme3yq80ue3lnn2j",
+          "bc1qklg6yg4px0x5jtfcveqj9qa26mykwekn9873aq",
+          "bc1q0wt522f0gn3k7xfnmzt09f7djey356pttfm7dk",
+          "bc1q70txrw2nsmsjt7jqh874v689nefk7ymw67xvnv",
+          "bc1qqwvsysm74l556g3tq0zstlzey4ph6cmqdqcrvc",
+          "bc1q3lhe4c9r2dy843w3ucmen6pk7ycxdfl3cq9kmz",
+          "34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo",
+          "3M219KR5vEneNb47ewrPfWyb5jQ2DjxRP6",
+          "3LQUu4v9z6KNch71j7kbj8GPeAGUo1FW6a",
+          "3FHNBLobJnbCTFTVakh5TXmEneyf5PT61B",
+          "bc1qm34lsc65zpw79lxes69zkqmk6ee3ewf0j77s3h",
+          "34HpHYiyQwg69gFmCq2BGHjF1DZnZnBeBP",
+          "1PJiGp2yDLvUgqeBsuZVCBADArNsk6XEiw",
+          "1Pzaqw98PeRfyHypfqyEgg5yycJRsENrE7",
+          "12VuUfQHTGqWDvBzm8TBad1mZBm4hjGEzN",
+          "bc1q7t9fxfaakmtk8pj7tdxjvwsng6y9x76czuaf5h",
+          "1KuPikhUYtHz3fmSQ2UvotpUuN672NuEcm",
+          "1DEuKerATHWRfyB14s6QCt4LPkfCTx4zaW",
+          "bc1p7x4aaws8t8cmmccu39kun6cajglx6ntuta7lhyxjt2cwrw4k89zqn0wley",
+          "3HdGoUTbcztBnS7UzY4vSPYhwr424CiWAA",
+          "3LcgLHzTvjLKBixBvkKGiadtiw2GBSKKqH",
+          "395vnFScKQ1ay695C6v7gf89UzoFpx3WuJ",
+          "bc1q5qvs2dzzydqt4ygfn0k0ertjnv8ctytgcdz7l0",
+          "bc1qlupspe4hp6sxef2fp7n0w9y4x447ysclk4xg30",
+          "bc1q5rsc4uscnmemlwru8xsys26k3xgxewqfnf3k7j",
+          "3BzYxZXkdpkrFTWzKkWGRoWXJMuN2Ko621",
+          "bc1q32lyrhp9zpww22phqjwwmelta0c8a5q990ghs6",
+          "bc1qdtmav38lca8yu3rrcknnqx5242cckgxqws7m72",
+          "31jUs8yQNVc9p6YuUPctWCkdhH7u8UiUba",
+          "bc1qquax5zzensg9mkejdgq3q3h76v34cug96zk0f6",
+          "3KRduELtTmxBtqYpZviPysXoJDxdtdxFLZ",
+          "bc1qq393eyjh8hdjvcchy0mxquhh9wx8h3kzlkchfs",
+          "3Kyo49ThRZPMukuYqPgqPejYeUpHvkA1EM",
+          "1PPWMe42cywnM61nVatkmiggwdRQYLiCyS",
+          "3AeUiDpPPUrUBS377584sFCpx8KLfpX9Ry",
+          "3HkPQSi1xso1Zh1EeqLjkMpura63fr5HRn",
+          "3JFJPpH8Chwo7CDbyYQ4XcfgcjEP1FGRMJ",
+          "3Q6ZCgJ3e4shasccLHen1VNUpReZTsjmsR",
+          "3FJ9hQuRtzy7pCqKHjeBGRDcY3fJbhHYXD",
+          "bc1q5n5dy7jgqhmpnmx44d3780qefzaphjreds0z9y",
+          "3F1ZmTDAv6q3xrnT3tpm55DkCDzxhstU2Z",
+          "3Nm3c4gqVmvCmeP1sYvDchbb1r4QMu6emn",
+          "bc1q78ufzeu8w8fwvxuphrdlg446xhyptf28fkatu5",
+          "3E97AjYaCq9QYnfFMtBCYiCEsN956Rvpj2",
+          "39884E3j6KZj82FK4vcCrkUvWYL5MQaS3v",
+          "3HkgC2R5PhqyXy6RVFyemvxN1VuFbQiQ5V",
+          "3PXBET2GrTwCamkeDzKCx8DeGDyrbuGKoc",
+          "32bhzEniykYRFADVaRM5PYswsjC23cxtes",
+          "3CySuFKbBS29M7rE5iJakZRNqb3msMeFoN",
+          "3M3EtJGx5Dy9nCATLDhyRCrKGc38QC9z2e",
+          "3AtnehKDkFPC1bKvdrEVPSRGCtxQH8F1R8",
+          "32KqbtrRVxC6GLUJgJhVQtFTaCdq4GrgBb",
+          "3EVVc8e2rxwUuERtdJCduWig8DnpsUqyA6",
+          "3AQ8bAh88TQU7JV1H3ovXrwsuV6s3zYZuN",
+          "3NjHh71XgjikBoTNYdWgXiNeZcLaKNThgb",
+          "378GLcve92X2Q4UrCyoMFDL5k5QrzeG7JN",
+          "3QK5vQ9hucSg8ZC8Vizq83qEWeHFLAWMud",
+          "36oiSkAi1VVuUpfdv8E2V5fZ2EarHRJpis",
+          "32BgTv3NSYbMsBTwDbNNN2GKZPCTJSkqDv",
+          "3NPL82eaehTFh4r3StpHqVQBTnZJFaGsyy",
+          "3NXCvmLGz9SxYi6TnjbBQfQMcwiZ1iQETa",
+          "3F9CGMu7JSJnMHA8jFM2KgxuH6hhxtvENP",
+          "3JqPhvKkAPcFB3oLELBT7z2tQdjpnxuDi9"
+        ],
+        "ethereum": [
+          "0x5a52e96bacdabb82fd05763e25335261b270efcb",
+          "0xf977814e90da44bfa03b6295a0616a897441acec",
+          "0xd3a22590f8243f8e83ac230d1842c9af0404c4a1",
+          "0x8894e0a0c962cb723c1976a4421c95949be2d4e3",
+          "0x835678a611b28684005a5e2233695fb6cbbb0007",
+          "0xe2fc31f816a9b94326492132018c3aecc4a93ae1",
+          "0x08439901c2bb071cd0812ed329675c9657434083",
+          "0x28c6c06298d514db089934071355e5743bf21d60",
+          "0xdfd5293d8e347dfe59e90efd55b2956a1343963d",
+          "0x21a31ee1afc51d94c2efccaa2092ad1028285549",
+          "0x18e226459ccf0eec276514a4fd3b226d8961e4d1",
+          "0x631fc1ea2270e98fbd9d92658ece0f5a269aa161",
+          "0x515b72ed8a97f42c568d6a143232775018f133c8",
+          "0x29bdfbf7d27462a2d115748ace2bd71a2646946c",
+          "0x1fbe2acee135d991592f167ac371f3dd893a508b"
+        ]
+      }
+    }
+  },
+  "treasuries": {
+    "tether": {
+      "ethereum": [
+        "0x5754284f345afc66a98fbb0a0afe71e0f007b949"
+      ],
+      "tron": [
+        "TKHuQkMSTStbaeLsK5gaB4i1VTbD6fgrmW"
+      ]
+    },
+    "circle": {
+      "ethereum": [
+        "0x55fe002aeff02f77364de339a1292923a15844b8"
+      ]
+    }
+  }
+}
