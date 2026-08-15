@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"sync"
@@ -45,7 +46,9 @@ type Streamer struct {
 	handler     types.EventHandler
 	logger      *slog.Logger
 
-	backfillOB bool
+	backfillOB    bool
+	netflow       bool
+	netflowScript string
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -53,11 +56,13 @@ type Streamer struct {
 }
 
 type Options struct {
-	ConfigPath string
-	NatsURL    string
-	Symbols    []string
-	Logger     *slog.Logger
-	BackfillOB bool
+	ConfigPath    string
+	NatsURL       string
+	Symbols       []string
+	Logger        *slog.Logger
+	BackfillOB    bool
+	Netflow       bool
+	NetflowScript string
 }
 
 func New(opts Options) (*Streamer, error) {
@@ -122,18 +127,20 @@ func New(opts Options) (*Streamer, error) {
 	}
 
 	s := &Streamer{
-		cfg:        cfg,
-		database:   database,
-		natsURL:    opts.NatsURL,
-		natsClient: natsClient,
-		aggMgr:     aggMgr,
-		flusher:    flusher,
-		priceCache: priceCache,
-		backfillOB: opts.BackfillOB,
-		clients:    make(map[string]exchange.Client),
-		logger:     opts.Logger,
-		ctx:        ctx,
-		cancel:     cancel,
+		cfg:           cfg,
+		database:      database,
+		natsURL:       opts.NatsURL,
+		natsClient:    natsClient,
+		aggMgr:        aggMgr,
+		flusher:       flusher,
+		priceCache:    priceCache,
+		backfillOB:    opts.BackfillOB,
+		netflow:       opts.Netflow,
+		netflowScript: opts.NetflowScript,
+		clients:       make(map[string]exchange.Client),
+		logger:        opts.Logger,
+		ctx:           ctx,
+		cancel:        cancel,
 	}
 
 	s.connHandler = &statusHandler{logger: opts.Logger, aggMgr: aggMgr}
@@ -155,6 +162,7 @@ func (s *Streamer) Start() error {
 	s.startOpenInterestPoller()
 	s.startExchangeClients()
 	s.startOBBackfill()
+	s.startNetflowBackfill()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -551,6 +559,61 @@ func (s *Streamer) startOBBackfill() {
 			}
 		}
 	}()
+}
+
+// startNetflowBackfill refreshes on-chain exchange flows (BigQuery → flow_bars)
+// on a 6h cadence, gated by the -netflow flag. On-chain flow is slow-moving
+// regime/sizing data, so 6h is plenty: the underlying datasets advance
+// block-by-block, and fetch-netflow.py is idempotent (watermark + upsert).
+// Runs once on startup, then every 6h.
+func (s *Streamer) startNetflowBackfill() {
+	if !s.netflow {
+		return
+	}
+	go func() {
+		s.runNetflowFetch()
+		ticker := time.NewTicker(6 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-s.ctx.Done():
+				return
+			case <-ticker.C:
+				s.runNetflowFetch()
+			}
+		}
+	}()
+}
+
+// runNetflowFetch shells out to scripts/fetch-netflow.py (uv run). The script
+// handles staleness clamping and watermarking; a failure here just skips this
+// cycle — the next tick retries.
+func (s *Streamer) runNetflowFetch() {
+	script := s.netflowScript
+	if _, err := os.Stat(script); err != nil {
+		s.logger.Error("netflow script not found, skipping", "path", script)
+		return
+	}
+	ctx, cancel := context.WithTimeout(s.ctx, 20*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "uv", "run", script, "--lag-hours", "2")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		s.logger.Error("netflow fetch failed",
+			"error", err,
+			"output", lastLines(string(out), 20),
+		)
+		return
+	}
+	s.logger.Info("netflow fetch completed", "output", lastLines(string(out), 30))
+}
+
+func lastLines(s string, n int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (s *Streamer) runOBBackfill() {
