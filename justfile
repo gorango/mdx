@@ -143,6 +143,27 @@ usdtd-fetch *FLAGS='':
 usdtd-recompute:
 	uv run scripts/fetch-usdtd.py --no-fetch
 
+# --- On-chain flow (BigQuery → postgres) ---
+
+# Fetch/update exchange netflow (BTC/ETH/ERC20 into/out of labeled exchange
+# addresses). Incremental by default; pass flags through (e.g. -- --backfill 2024-01-01).
+netflow-fetch *FLAGS='':
+	uv run scripts/fetch-netflow.py {{FLAGS}}
+
+netflow-backfill DATE:
+	uv run scripts/fetch-netflow.py --backfill {{DATE}}
+
+# Only (re)load data/netflow/labels.json into address_labels.
+netflow-labels:
+	uv run scripts/fetch-netflow.py --labels-only
+
+# Dataset staleness + flow_bars gap report (no fetch).
+netflow-freshness:
+	uv run scripts/fetch-netflow.py --freshness-only
+
+netflow-status:
+	psql {{PG_URL}} -c "SELECT asset, exchange, COUNT(*), MIN(timestamp), MAX(timestamp) FROM flow_bars GROUP BY asset, exchange ORDER BY asset;"
+
 # --- Dev shortcuts ---
 
 dev-pc:
