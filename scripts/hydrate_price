@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+START="${1:?Usage: $0 START END [WORKERS] [OVERWRITE]}"
+END="${2:?Usage: $0 START END [WORKERS] [OVERWRITE]}"
+WORKERS="${3:-4}"
+OVERWRITE="${4:-false}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+SYMBOLS_FILE="$PROJECT_ROOT/config/symbols.yaml"
+
+source "$SCRIPT_DIR/progress.sh"
+
+# Read symbols from canonical config/symbols.yaml
+mapfile -t SYMBOL_LIST < <(grep -oP '^\s*-\s+"\K[^"]+' "$SYMBOLS_FILE")
+
+echo "Building price..."
+cd "$SCRIPT_DIR/.."
+BINARY=$(mktemp /tmp/price.XXXXXX)
+go build -o "$BINARY" ./cmd/price
+
+LOG_DIR=$(mktemp -d /tmp/hydrate-price-logs.XXXXXX)
+STATUS_FILE=$(mktemp /tmp/hydrate-price-status.XXXXXX)
+trap 'rm -rf "$BINARY" "$STATUS_FILE" "$STATUS_FILE.stop"' EXIT
+
+OVERWRITE_FLAG=""
+if [ "$OVERWRITE" = "true" ]; then
+	OVERWRITE_FLAG="-overwrite"
+fi
+
+POOL_LABEL="price $START→$END"
+run_symbol() {
+	"$BINARY" \
+		-exchange binance \
+		-symbol "$1" \
+		$OVERWRITE_FLAG \
+		-timeframe 1m \
+		-start "${START}T00:00:00Z" \
+		-end "${END}T00:00:00Z"
+}
+
+echo "Hydrating price data for ${#SYMBOL_LIST[@]} symbols from $START to $END with $WORKERS workers (overwrite=$OVERWRITE)"
+echo "Per-symbol logs: $LOG_DIR"
+
+FAILED=0
+pool_run "${#SYMBOL_LIST[@]}" "$WORKERS" "$STATUS_FILE" "$LOG_DIR" "${SYMBOL_LIST[@]}" || FAILED=1
+
+if ((FAILED)); then
+	echo "Failed symbols:"
+	pool_failures "$STATUS_FILE" | sed 's/^/  /'
+	echo "Logs kept for inspection: $LOG_DIR"
+	exit 1
+fi
+
+# A zero exit code from the hydrator does not mean clean data: fetch errors
+# are logged per-symbol while the command still exits 0. Keep logs around
+# whenever they carry real errors so partial backfills are discoverable.
+# Match slog LEVELS, not the word "error" (WARN lines embed error="..." attrs).
+if grep -qliE 'level=(ERROR|FATAL)' "$LOG_DIR"/*.log 2>/dev/null; then
+	echo "WARNING: errors in per-symbol logs (kept): $LOG_DIR"
+	grep -liE 'level=(ERROR|FATAL)' "$LOG_DIR"/*.log | sed 's/^/  /'
+else
+	rm -rf "$LOG_DIR"
+fi

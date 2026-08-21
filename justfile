@@ -102,13 +102,11 @@ ob-hydrate SYMBOL START END:
 ob-backfill-liq START='2025-07-01' END='2026-08-01' WORKERS='8':
 	@go run ./cmd/ob-backfill-liq -start {{START}} -end {{END}} -workers {{WORKERS}}
 
-ob-hydrate-all START END WORKERS='4':
-	nohup bash scripts/hydrate-all.sh {{START}} {{END}} {{WORKERS}} > /tmp/ob-hydrate-{{START}}-{{END}}.log 2>&1 &
-	@echo "PID: $$! | log: tail -f /tmp/ob-hydrate-{{START}}-{{END}}.log"
+hydrate-orderbook START END WORKERS='4' OVERWRITE='false':
+	bash scripts/hydrate_orderbook {{START}} {{END}} {{WORKERS}} {{OVERWRITE}}
 
-price-hydrate-all START END WORKERS='4':
-	nohup bash scripts/price-hydrate-all.sh {{START}} {{END}} {{WORKERS}} > /tmp/price-hydrate-{{START}}-{{END}}.log 2>&1 &
-	@echo "PID: $$! | log: tail -f /tmp/price-hydrate-{{START}}-{{END}}.log"
+hydrate-price START END WORKERS='4' OVERWRITE='false':
+	bash scripts/hydrate_price {{START}} {{END}} {{WORKERS}} {{OVERWRITE}}
 
 prune SYMBOL:
 	go run ./cmd/prune -type orderbook -exchange binance_futures -symbol {{SYMBOL}}

@@ -4,14 +4,16 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
+	"os"
+	"time"
+
 	"gorango/mdx/domain/symbols"
 	"gorango/mdx/domain/timeframe"
 	"gorango/mdx/internal/cache"
 	"gorango/mdx/internal/config"
 	"gorango/mdx/internal/db"
 	"gorango/mdx/internal/rest"
-	"os"
-	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -45,6 +47,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelWarn,
+	}))
+
 	dbConn, err := db.New(connString)
 	if err != nil {
 		fmt.Printf("Failed to connect to database: %v\n", err)
@@ -53,7 +59,7 @@ func main() {
 	defer dbConn.Close()
 
 	restClient := createRESTClient(*exchange)
-	priceCache := cache.NewPriceCache(*exchange, dbConn, restClient, nil)
+	priceCache := cache.NewPriceCache(*exchange, dbConn, restClient, logger)
 	priceCache.SetOverwrite(*overwrite)
 
 	if *showStats {

@@ -64,16 +64,30 @@ func (c *CryptoHFTClient) DownloadParquet(exchange, symbol, date, hour, dataType
 			// as not available, not a data gap.
 			return nil, fmt.Errorf("data not available: %s", string(body))
 		}
-		decoder, zerr := zstd.NewReader(nil)
-		if zerr != nil {
-			return nil, fmt.Errorf("create zstd decoder: %w", zerr)
+		// Payload sniffing: historical hours arrive zstd-compressed, but the
+		// vendor now serves recent hours as UNCOMPRESSED parquet (the signed
+		// R2 target drops the .zst suffix). Decode only when the zstd magic
+		// (0x28 B5 2F FD) is present; accept raw parquet ("PAR1") as-is;
+		// anything else is a corrupt/error body worth retrying.
+		if len(body) >= 4 && body[0] == 0x28 && body[1] == 0xB5 && body[2] == 0x2F && body[3] == 0xFD {
+			decoder, zerr := zstd.NewReader(nil)
+			if zerr != nil {
+				return nil, fmt.Errorf("create zstd decoder: %w", zerr)
+			}
+			decompressed, err = decoder.DecodeAll(body, nil)
+			decoder.Close()
+			if err != nil {
+				time.Sleep(time.Duration(1<<attempt) * time.Second)
+				continue
+			}
+		} else if string(body[:4]) == "PAR1" {
+			decompressed = body
+		} else {
+			err = fmt.Errorf("unrecognized payload (%d bytes, not zstd/parquet)", len(body))
+			time.Sleep(time.Duration(1<<attempt) * time.Second)
+			continue
 		}
-		decompressed, err = decoder.DecodeAll(body, nil)
-		decoder.Close()
-		if err == nil {
-			break
-		}
-		time.Sleep(time.Duration(1<<attempt) * time.Second)
+		break
 	}
 	if err != nil {
 		return nil, fmt.Errorf("download failed after retries: %w", err)
@@ -91,21 +105,27 @@ func (c *CryptoHFTClient) downloadWithRetry(url string) ([]byte, error) {
 	defer fasthttp.ReleaseResponse(resp)
 	req.SetRequestURI(url)
 	req.Header.SetMethod(fasthttp.MethodGet)
-	if err := c.httpClient.Do(req, resp); err != nil {
+	// The vendor 302-redirects /download to signed Cloudflare R2 URLs;
+	// plain Do does not follow redirects, which made every file look
+	// unavailable and silently skipped whole days.
+	if err := c.httpClient.DoRedirects(req, resp, 3); err != nil {
 		return nil, err
 	}
-	if resp.StatusCode() == http.StatusNotFound {
+	switch {
+	case resp.StatusCode() == http.StatusOK:
+		return resp.Body(), nil
+	case resp.StatusCode() == http.StatusNotFound:
 		return nil, fmt.Errorf("404: data not available")
-	}
-	if resp.StatusCode() == http.StatusTooManyRequests || resp.StatusCode() >= 500 {
+	case resp.StatusCode() == http.StatusTooManyRequests || resp.StatusCode() >= 500:
 		// Rate limit / transient server error — retryable, NOT a data gap.
 		// (IsNotAvailable does not match these.)
 		return nil, fmt.Errorf("HTTP %d: transient", resp.StatusCode())
+	default:
+		// Anything else (auth failure, redirect loop, ...) must surface as a
+		// hard error — classifying it as "not available" makes the
+		// coordinator treat the hour as a data gap and skip ahead.
+		return nil, fmt.Errorf("unexpected HTTP status %d", resp.StatusCode())
 	}
-	if resp.StatusCode() != http.StatusOK {
-		return nil, fmt.Errorf("%d: data not available", resp.StatusCode())
-	}
-	return resp.Body(), nil
 }
 
 func IsNotAvailable(err error) bool {
