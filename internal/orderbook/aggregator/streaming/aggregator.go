@@ -8,12 +8,16 @@ package streaming
 //   - Spread: BPS, mean + stddev (Welford's algorithm)
 //   - liqCovered: passed via Finalize(bool), not a struct field
 //   - FundingRate: accumulated in BarBuilder, last sample used
+//   - Level stats (footprint scalars): one shared levelhist.Hist per minute,
+//     fed the identical trade sequence as TotalVolume/Buy/Sell accumulation;
+//     reductions applied via Stats.Apply (NULL discipline centralized there)
 // Any change to aggregation semantics must be mirrored in both files.
 
 import (
 	"cmp"
 	"fmt"
 	"gorango/mdx/domain/types"
+	"gorango/mdx/internal/orderbook/levelhist"
 	"gorango/mdx/internal/orderbook/treap"
 	"math"
 	"slices"
@@ -63,6 +67,11 @@ type BarBuilder struct {
 	SpreadCount        int
 	SpreadMean         float64
 	SpreadM2           float64
+	// Per-minute trade histogram over exact prices → footprint scalars
+	// (migration 0006). Nil until the first trade of the minute; reduced once,
+	// at minute close, so a flush never persists partial-minute level stats.
+	// Parity: shared levelhist package.
+	Levels *levelhist.Hist
 }
 
 // New creates a new streaming aggregator
@@ -141,6 +150,13 @@ func (a *Aggregator) processTrade(b *BarBuilder, trade types.Trade) {
 	b.TradeCount += count
 	b.TotalVolume += trade.Quantity
 	b.TotalValue += trade.Price * trade.Quantity
+
+	// Footprint scalars: the histogram sees the identical trade population as
+	// the scalar accumulators above (parity with batch aggregator).
+	if b.Levels == nil {
+		b.Levels = levelhist.New()
+	}
+	b.Levels.Add(trade.Price, trade.Quantity, trade.IsBuyerMaker)
 
 	if trade.IsBuyerMaker {
 		b.SellVolume += trade.Quantity
@@ -352,7 +368,7 @@ func (a *Aggregator) buildBar(b *BarBuilder, liqCovered bool) types.OrderbookBar
 		liqCoveredInt = 1
 	}
 
-	return types.OrderbookBar{
+	bar := types.OrderbookBar{
 		Timestamp:          (b.Timestamp + 1) * 60000,
 		VWAP:               vwap,
 		TradeCount:         b.TradeCount,
@@ -370,4 +386,13 @@ func (a *Aggregator) buildBar(b *BarBuilder, liqCovered bool) types.OrderbookBar
 		LiqShortVol:        liqShortVol,
 		LiqCovered:         liqCoveredInt,
 	}
+
+	// Footprint scalars (migration 0006): NULL discipline is centralized in
+	// levelhist.Stats.Apply — a trade-less minute stays all-NULL. Reduced at
+	// minute close only; partial-minute stats are never flushed.
+	if b.Levels != nil {
+		b.Levels.Apply(&bar)
+	}
+
+	return bar
 }

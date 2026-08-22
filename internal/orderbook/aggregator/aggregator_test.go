@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestProcessTrade(t *testing.T) {
@@ -82,6 +83,77 @@ func TestFinalize(t *testing.T) {
 	assert.Len(t, bars, 2)
 
 	assert.Empty(t, agg.bars)
+}
+
+// TestFinalizeLevelStats verifies the footprint scalars survive Finalize with
+// the documented semantics (migration 0006).
+func TestFinalizeLevelStats(t *testing.T) {
+	agg := New()
+	// Minute 1: buys at 100 (qty 2), sells at 101 (qty 5).
+	agg.ProcessTrade(Trade{Timestamp: 60000, Price: 100.0, Quantity: 2.0, IsBuyerMaker: false})
+	agg.ProcessTrade(Trade{Timestamp: 60001, Price: 101.0, Quantity: 5.0, IsBuyerMaker: true})
+
+	bars := agg.Finalize(true)
+	require.Len(t, bars, 1)
+	bar := bars[0]
+
+	require.NotNil(t, bar.TradeOpen)
+	assert.InDelta(t, 100.0, *bar.TradeOpen, 1e-12)
+	require.NotNil(t, bar.TradeClose)
+	assert.InDelta(t, 101.0, *bar.TradeClose, 1e-12)
+	require.NotNil(t, bar.TradeHigh)
+	assert.InDelta(t, 101.0, *bar.TradeHigh, 1e-12)
+	require.NotNil(t, bar.TradeLow)
+	assert.InDelta(t, 100.0, *bar.TradeLow, 1e-12)
+
+	require.NotNil(t, bar.BuyVWAP)
+	assert.InDelta(t, 100.0, *bar.BuyVWAP, 1e-12)
+	require.NotNil(t, bar.SellVWAP)
+	assert.InDelta(t, 101.0, *bar.SellVWAP, 1e-12)
+
+	// POC: sell level carries more volume → 101, share 5/7.
+	require.NotNil(t, bar.POCPrice)
+	assert.InDelta(t, 101.0, *bar.POCPrice, 1e-12)
+	require.NotNil(t, bar.POCVolumeShare)
+	assert.InDelta(t, 5.0/7.0, *bar.POCVolumeShare, 1e-12)
+	require.NotNil(t, bar.BuyPOCPrice)
+	assert.InDelta(t, 100.0, *bar.BuyPOCPrice, 1e-12)
+	require.NotNil(t, bar.SellPOCPrice)
+	assert.InDelta(t, 101.0, *bar.SellPOCPrice, 1e-12)
+
+	require.NotNil(t, bar.HiBandSellVol)
+	assert.InDelta(t, 5.0, *bar.HiBandSellVol, 1e-12)
+	require.NotNil(t, bar.LoBandBuyVol)
+	assert.InDelta(t, 2.0, *bar.LoBandBuyVol, 1e-12)
+}
+
+// TestFinalizeNoTradesNilLevelStats: spread/depth-only minutes carry a full
+// NULL footprint set — "no trades" must stay distinct from zeros.
+func TestFinalizeNoTradesNilLevelStats(t *testing.T) {
+	agg := New()
+	// Snapshot event warms the book (parity with TestDepthSampling) so the
+	// minute produces a depth-only bar with zero trades.
+	agg.ProcessOrderBookUpdate(OrderBookUpdate{
+		EventTime:     60000,
+		Price:         99.0,
+		Quantity:      200.0,
+		Side:          "bid",
+		EventType:     "snapshot",
+		FinalUpdateID: 1,
+	})
+
+	bars := agg.Finalize(true)
+	require.Len(t, bars, 1)
+	bar := bars[0]
+	assert.Equal(t, 0, bar.TradeCount)
+	assert.Nil(t, bar.TradeOpen)
+	assert.Nil(t, bar.TradeClose)
+	assert.Nil(t, bar.POCPrice)
+	assert.Nil(t, bar.POCVolumeShare)
+	assert.Nil(t, bar.BuyVWAP)
+	assert.Nil(t, bar.SellPOCPrice)
+	assert.Nil(t, bar.HiBandBuyVol)
+	assert.Nil(t, bar.LoBandSellVol)
 }
 
 func TestGenerateHours(t *testing.T) {
