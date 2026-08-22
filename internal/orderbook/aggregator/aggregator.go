@@ -8,11 +8,15 @@ package aggregator
 //   - Spread: BPS, mean + stddev
 //   - liqCovered: passed via Finalize(bool), not a struct field
 //   - FundingRate: not accumulated here (handled at pipeline level for batch)
+//   - Level stats (footprint scalars): one shared levelhist.Hist per minute,
+//     fed the identical trade sequence as TotalVolume/Buy/Sell accumulation;
+//     reductions applied via Stats.Apply (NULL discipline centralized there)
 // Any change to aggregation semantics must be mirrored in both files.
 
 import (
 	"cmp"
 	"gorango/mdx/domain/types"
+	"gorango/mdx/internal/orderbook/levelhist"
 	"gorango/mdx/internal/orderbook/treap"
 	"math"
 	"slices"
@@ -69,6 +73,10 @@ type BarBuilder struct {
 	SpreadCount int
 	SpreadMean  float64
 	SpreadM2    float64
+	// Per-minute trade histogram over exact prices → footprint scalars
+	// (migration 0006). Nil until the first trade of the minute; dropped with
+	// the builder at Finalize. Parity: shared levelhist package.
+	Levels *levelhist.Hist
 }
 
 // Aggregator processes HFT data into 1-minute bars
@@ -120,6 +128,13 @@ func (a *Aggregator) ProcessTrade(trade Trade) {
 	bar.TotalVolume += trade.Quantity
 	bar.TotalValue += trade.Price * trade.Quantity
 	a.lastTradePrice = trade.Price
+
+	// Footprint scalars: the histogram sees the identical trade population as
+	// the scalar accumulators above (parity with streaming aggregator).
+	if bar.Levels == nil {
+		bar.Levels = levelhist.New()
+	}
+	bar.Levels.Add(trade.Price, trade.Quantity, trade.IsBuyerMaker)
 
 	if trade.IsBuyerMaker {
 		bar.SellVolume += trade.Quantity
@@ -322,6 +337,12 @@ func (a *Aggregator) Finalize(liqCovered bool) []types.OrderbookBar {
 				bar.DepthRatio = avgAskDepth / totalDepth
 				bar.DepthImbalance = (avgBidDepth - avgAskDepth) / totalDepth
 			}
+		}
+
+		// Footprint scalars (migration 0006): NULL discipline is centralized
+		// in levelhist.Stats.Apply — a trade-less minute stays all-NULL.
+		if builder.Levels != nil {
+			builder.Levels.Apply(&bar)
 		}
 
 		bars = append(bars, bar)

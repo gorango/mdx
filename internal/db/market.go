@@ -153,6 +153,13 @@ func (db *DB) InsertOrderbookBars(ctx context.Context, exchange, symbol string, 
 			"depth_ratio", "open_interest", "open_interest_change",
 			"funding_rate", "funding_rate_change", "liq_long_vol",
 			"liq_short_vol", "liq_covered",
+			// Footprint scalars (migration 0006). Consistency group: written
+			// as one set, merged as one set in the upsert below.
+			"trade_open", "trade_high", "trade_low", "trade_close",
+			"buy_vwap", "sell_vwap", "poc_price", "poc_volume_share",
+			"buy_poc_price", "sell_poc_price", "trade_price_std",
+			"hi_band_buy_vol", "hi_band_sell_vol",
+			"lo_band_buy_vol", "lo_band_sell_vol",
 		},
 		pgx.CopyFromSlice(len(bars), func(i int) ([]interface{}, error) {
 			b := bars[i]
@@ -175,6 +182,21 @@ func (db *DB) InsertOrderbookBars(ctx context.Context, exchange, symbol string, 
 				b.LiqLongVol,
 				b.LiqShortVol,
 				b.LiqCovered,
+				b.TradeOpen,
+				b.TradeHigh,
+				b.TradeLow,
+				b.TradeClose,
+				b.BuyVWAP,
+				b.SellVWAP,
+				b.POCPrice,
+				b.POCVolumeShare,
+				b.BuyPOCPrice,
+				b.SellPOCPrice,
+				b.TradePriceStd,
+				b.HiBandBuyVol,
+				b.HiBandSellVol,
+				b.LoBandBuyVol,
+				b.LoBandSellVol,
 			}, nil
 		}),
 	)
@@ -183,8 +205,8 @@ func (db *DB) InsertOrderbookBars(ctx context.Context, exchange, symbol string, 
 	}
 
 	_, err = tx.Exec(ctx, fmt.Sprintf(`
-		INSERT INTO orderbook_bars (exchange, symbol, timestamp, vwap, trade_count, buy_volume, sell_volume, avg_spread, spread_std_dev, depth_imbalance, depth_ratio, open_interest, open_interest_change, funding_rate, funding_rate_change, liq_long_vol, liq_short_vol, liq_covered)
-		SELECT exchange, symbol, timestamp, vwap, trade_count, buy_volume, sell_volume, avg_spread, spread_std_dev, depth_imbalance, depth_ratio, open_interest, open_interest_change, funding_rate, funding_rate_change, liq_long_vol, liq_short_vol, liq_covered FROM %s
+		INSERT INTO orderbook_bars (exchange, symbol, timestamp, vwap, trade_count, buy_volume, sell_volume, avg_spread, spread_std_dev, depth_imbalance, depth_ratio, open_interest, open_interest_change, funding_rate, funding_rate_change, liq_long_vol, liq_short_vol, liq_covered, trade_open, trade_high, trade_low, trade_close, buy_vwap, sell_vwap, poc_price, poc_volume_share, buy_poc_price, sell_poc_price, trade_price_std, hi_band_buy_vol, hi_band_sell_vol, lo_band_buy_vol, lo_band_sell_vol)
+		SELECT exchange, symbol, timestamp, vwap, trade_count, buy_volume, sell_volume, avg_spread, spread_std_dev, depth_imbalance, depth_ratio, open_interest, open_interest_change, funding_rate, funding_rate_change, liq_long_vol, liq_short_vol, liq_covered, trade_open, trade_high, trade_low, trade_close, buy_vwap, sell_vwap, poc_price, poc_volume_share, buy_poc_price, sell_poc_price, trade_price_std, hi_band_buy_vol, hi_band_sell_vol, lo_band_buy_vol, lo_band_sell_vol FROM %s
 		ON CONFLICT (exchange, symbol, timestamp) DO UPDATE SET
 			vwap = CASE WHEN EXCLUDED.trade_count >= orderbook_bars.trade_count AND EXCLUDED.trade_count > 0 THEN EXCLUDED.vwap ELSE orderbook_bars.vwap END,
 			trade_count = GREATEST(orderbook_bars.trade_count, EXCLUDED.trade_count),
@@ -200,7 +222,28 @@ func (db *DB) InsertOrderbookBars(ctx context.Context, exchange, symbol string, 
 			funding_rate_change = COALESCE(EXCLUDED.funding_rate_change, orderbook_bars.funding_rate_change),
 			liq_long_vol = COALESCE(EXCLUDED.liq_long_vol, orderbook_bars.liq_long_vol),
 			liq_short_vol = COALESCE(EXCLUDED.liq_short_vol, orderbook_bars.liq_short_vol),
-			liq_covered = GREATEST(orderbook_bars.liq_covered, EXCLUDED.liq_covered)
+			liq_covered = GREATEST(orderbook_bars.liq_covered, EXCLUDED.liq_covered),
+			-- Footprint scalars (migration 0006): CONSISTENCY GROUP. These 15
+			-- columns come from ONE trade population, so they merge as a set —
+			-- the same winner rule as vwap/buy_volume/sell_volume (higher
+			-- trade_count wins wholesale). Never COALESCE across writers: a
+			-- stream-partial POC must never be stitched onto a batch-complete
+			-- VWAP.
+			trade_open = CASE WHEN EXCLUDED.trade_open IS NOT NULL AND EXCLUDED.trade_count >= orderbook_bars.trade_count THEN EXCLUDED.trade_open ELSE orderbook_bars.trade_open END,
+			trade_high = CASE WHEN EXCLUDED.trade_open IS NOT NULL AND EXCLUDED.trade_count >= orderbook_bars.trade_count THEN EXCLUDED.trade_high ELSE orderbook_bars.trade_high END,
+			trade_low = CASE WHEN EXCLUDED.trade_open IS NOT NULL AND EXCLUDED.trade_count >= orderbook_bars.trade_count THEN EXCLUDED.trade_low ELSE orderbook_bars.trade_low END,
+			trade_close = CASE WHEN EXCLUDED.trade_open IS NOT NULL AND EXCLUDED.trade_count >= orderbook_bars.trade_count THEN EXCLUDED.trade_close ELSE orderbook_bars.trade_close END,
+			buy_vwap = CASE WHEN EXCLUDED.trade_open IS NOT NULL AND EXCLUDED.trade_count >= orderbook_bars.trade_count THEN EXCLUDED.buy_vwap ELSE orderbook_bars.buy_vwap END,
+			sell_vwap = CASE WHEN EXCLUDED.trade_open IS NOT NULL AND EXCLUDED.trade_count >= orderbook_bars.trade_count THEN EXCLUDED.sell_vwap ELSE orderbook_bars.sell_vwap END,
+			poc_price = CASE WHEN EXCLUDED.trade_open IS NOT NULL AND EXCLUDED.trade_count >= orderbook_bars.trade_count THEN EXCLUDED.poc_price ELSE orderbook_bars.poc_price END,
+			poc_volume_share = CASE WHEN EXCLUDED.trade_open IS NOT NULL AND EXCLUDED.trade_count >= orderbook_bars.trade_count THEN EXCLUDED.poc_volume_share ELSE orderbook_bars.poc_volume_share END,
+			buy_poc_price = CASE WHEN EXCLUDED.trade_open IS NOT NULL AND EXCLUDED.trade_count >= orderbook_bars.trade_count THEN EXCLUDED.buy_poc_price ELSE orderbook_bars.buy_poc_price END,
+			sell_poc_price = CASE WHEN EXCLUDED.trade_open IS NOT NULL AND EXCLUDED.trade_count >= orderbook_bars.trade_count THEN EXCLUDED.sell_poc_price ELSE orderbook_bars.sell_poc_price END,
+			trade_price_std = CASE WHEN EXCLUDED.trade_open IS NOT NULL AND EXCLUDED.trade_count >= orderbook_bars.trade_count THEN EXCLUDED.trade_price_std ELSE orderbook_bars.trade_price_std END,
+			hi_band_buy_vol = CASE WHEN EXCLUDED.trade_open IS NOT NULL AND EXCLUDED.trade_count >= orderbook_bars.trade_count THEN EXCLUDED.hi_band_buy_vol ELSE orderbook_bars.hi_band_buy_vol END,
+			hi_band_sell_vol = CASE WHEN EXCLUDED.trade_open IS NOT NULL AND EXCLUDED.trade_count >= orderbook_bars.trade_count THEN EXCLUDED.hi_band_sell_vol ELSE orderbook_bars.hi_band_sell_vol END,
+			lo_band_buy_vol = CASE WHEN EXCLUDED.trade_open IS NOT NULL AND EXCLUDED.trade_count >= orderbook_bars.trade_count THEN EXCLUDED.lo_band_buy_vol ELSE orderbook_bars.lo_band_buy_vol END,
+			lo_band_sell_vol = CASE WHEN EXCLUDED.trade_open IS NOT NULL AND EXCLUDED.trade_count >= orderbook_bars.trade_count THEN EXCLUDED.lo_band_sell_vol ELSE orderbook_bars.lo_band_sell_vol END
 	`, tmpTable))
 	if err != nil {
 		return fmt.Errorf("insert from temp table: %w", err)
@@ -214,7 +257,11 @@ func (db *DB) QueryOrderbookBars(ctx context.Context, exchange, symbol string, s
 		SELECT timestamp, vwap, trade_count, buy_volume, sell_volume,
 			avg_spread, spread_std_dev, depth_imbalance, depth_ratio,
 			open_interest, open_interest_change, funding_rate, funding_rate_change,
-			liq_long_vol, liq_short_vol, liq_covered
+			liq_long_vol, liq_short_vol, liq_covered,
+			trade_open, trade_high, trade_low, trade_close,
+			buy_vwap, sell_vwap, poc_price, poc_volume_share,
+			buy_poc_price, sell_poc_price, trade_price_std,
+			hi_band_buy_vol, hi_band_sell_vol, lo_band_buy_vol, lo_band_sell_vol
 		FROM orderbook_bars
 		WHERE exchange = $1 AND symbol = $2 AND timestamp >= $3 AND timestamp < $4
 		ORDER BY timestamp ASC
@@ -233,6 +280,10 @@ func (db *DB) QueryOrderbookBars(ctx context.Context, exchange, symbol string, s
 			&b.AvgSpread, &b.SpreadStdDev, &b.DepthImbalance, &b.DepthRatio,
 			&b.OpenInterest, &b.OpenInterestChange, &b.FundingRate, &b.FundingRateChange,
 			&b.LiqLongVol, &b.LiqShortVol, &b.LiqCovered,
+			&b.TradeOpen, &b.TradeHigh, &b.TradeLow, &b.TradeClose,
+			&b.BuyVWAP, &b.SellVWAP, &b.POCPrice, &b.POCVolumeShare,
+			&b.BuyPOCPrice, &b.SellPOCPrice, &b.TradePriceStd,
+			&b.HiBandBuyVol, &b.HiBandSellVol, &b.LoBandBuyVol, &b.LoBandSellVol,
 		); err != nil {
 			return nil, fmt.Errorf("scan row: %w", err)
 		}
@@ -416,7 +467,11 @@ func (db *DB) QueryOrderbookBarsStream(ctx context.Context, exchange, symbol str
 		SELECT timestamp, vwap, trade_count, buy_volume, sell_volume,
 			avg_spread, spread_std_dev, depth_imbalance, depth_ratio,
 			open_interest, open_interest_change, funding_rate, funding_rate_change,
-			liq_long_vol, liq_short_vol, liq_covered
+			liq_long_vol, liq_short_vol, liq_covered,
+			trade_open, trade_high, trade_low, trade_close,
+			buy_vwap, sell_vwap, poc_price, poc_volume_share,
+			buy_poc_price, sell_poc_price, trade_price_std,
+			hi_band_buy_vol, hi_band_sell_vol, lo_band_buy_vol, lo_band_sell_vol
 		FROM orderbook_bars
 		WHERE exchange = $1 AND symbol = $2 AND timestamp >= $3 AND timestamp < $4
 		ORDER BY timestamp ASC
