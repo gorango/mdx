@@ -145,6 +145,25 @@ usdtd-fetch *FLAGS='':
 usdtd-recompute:
 	uv run scripts/fetch-usdtd.py --no-fetch
 
+# --- FRED macro (St. Louis Fed → postgres) ---
+
+# Fetch/update FRED macro series (incremental by default; --backfill to rebuild).
+fred-fetch *FLAGS='':
+	uv run scripts/fetch-fred.py {{FLAGS}}
+
+fred-backfill DATE:
+	uv run scripts/fetch-fred.py --backfill {{DATE}}
+
+# Coverage + gap report per series (no fetch).
+fred-freshness:
+	uv run scripts/fetch-fred.py --freshness-only
+
+fred-status:
+	psql {{PG_URL}} -c "SELECT series_id, COUNT(*), MIN(timestamp)::date, MAX(timestamp)::date FROM fred_observations GROUP BY series_id ORDER BY series_id;"
+
+fred-series:
+	uv run scripts/fetch-fred.py --list-series
+
 # --- On-chain flow (BigQuery → postgres) ---
 
 # Fetch/update exchange netflow (BTC/ETH/ERC20 into/out of labeled exchange
