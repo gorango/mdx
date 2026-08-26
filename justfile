@@ -43,6 +43,10 @@ migrate:
 migrate-status:
 	psql {{PG_URL}} -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"
 
+# Audit orderbook_bars correctness (footprint scalars + legacy columns) over a window.
+audit-ob START END:
+	psql {{PG_URL}} -v ON_ERROR_STOP=1 -v start={{START}} -v end={{END}} -f scripts/audit_orderbook_bars.sql
+
 sql-listen-ob:
 	python3 scripts/listen_bars.py orderbook_bar_insert
 
