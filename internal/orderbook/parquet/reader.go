@@ -1,12 +1,9 @@
 package parquet
 
 import (
-	"bufio"
-	"container/heap"
-	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"sort"
 	"strconv"
@@ -15,71 +12,16 @@ import (
 	"github.com/parquet-go/parquet-go"
 )
 
-func parseFloat(val parquet.Value) float64 {
+func getFloat64(val parquet.Value) float64 {
+	if val.Kind() == parquet.Double {
+		return val.Double()
+	}
+	if val.Kind() == parquet.Float {
+		return float64(val.Float())
+	}
+	// Fallback for BYTE_ARRAY / string-encoded numbers
 	v, _ := strconv.ParseFloat(val.String(), 64)
 	return v
-}
-
-const orderBookSortChunkSize = 250000
-
-type orderBookMergeItem struct {
-	update   OrderBook
-	readerID int
-}
-
-type orderBookMergeHeap []orderBookMergeItem
-
-func (h orderBookMergeHeap) Len() int { return len(h) }
-
-func (h orderBookMergeHeap) Less(i, j int) bool {
-	if h[i].update.FinalUpdateID == h[j].update.FinalUpdateID {
-		if h[i].update.Price == h[j].update.Price {
-			return h[i].readerID < h[j].readerID
-		}
-		return h[i].update.Price < h[j].update.Price
-	}
-	return h[i].update.FinalUpdateID < h[j].update.FinalUpdateID
-}
-
-func (h orderBookMergeHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
-
-func (h *orderBookMergeHeap) Push(x any) {
-	*h = append(*h, x.(orderBookMergeItem))
-}
-
-func (h *orderBookMergeHeap) Pop() any {
-	old := *h
-	n := len(old)
-	item := old[n-1]
-	*h = old[:n-1]
-	return item
-}
-
-type orderBookChunkReader struct {
-	file *os.File
-	rd   *bufio.Reader
-}
-
-func (r *orderBookChunkReader) Close() error {
-	if r.file != nil {
-		return r.file.Close()
-	}
-	return nil
-}
-
-func sideToByte(side string) uint8 {
-	s := strings.ToLower(strings.TrimSpace(side))
-	if s == "bid" || s == "b" || s == "buy" || s == "1" || s == "true" {
-		return 1
-	}
-	return 2
-}
-
-func byteToSide(b uint8) string {
-	if b == 1 {
-		return "bid"
-	}
-	return "ask"
 }
 
 // normalizeSide converts CryptoHFT side values ("b", "a", "buy", "sell") to standard "bid"/"ask".
@@ -91,32 +33,6 @@ func normalizeSide(side string) string {
 	return "ask"
 }
 
-func eventTypeToByte(eventType string) uint8 {
-	switch eventType {
-	case "":
-		return 0
-	case "depthUpdate", "update":
-		return 1
-	case "snapshot":
-		return 2
-	default:
-		return 255
-	}
-}
-
-func byteToEventType(b uint8) string {
-	switch b {
-	case 0:
-		return ""
-	case 1:
-		return "depthUpdate"
-	case 2:
-		return "snapshot"
-	default:
-		return "other"
-	}
-}
-
 func normalizeEventType(eventType string) string {
 	switch eventType {
 	case "update":
@@ -126,123 +42,6 @@ func normalizeEventType(eventType string) string {
 	default:
 		return eventType
 	}
-}
-
-func writeOrderBookChunk(rows []OrderBook) (string, error) {
-	if len(rows) == 0 {
-		return "", nil
-	}
-
-	tmp, err := os.CreateTemp("", "orderbook-sort-*.bin")
-	if err != nil {
-		return "", fmt.Errorf("create temp chunk: %w", err)
-	}
-
-	path := tmp.Name()
-	wr := bufio.NewWriterSize(tmp, 1<<20)
-
-	for _, u := range rows {
-		if err := binary.Write(wr, binary.LittleEndian, u.EventTime); err != nil {
-			_ = tmp.Close()
-			_ = os.Remove(path)
-			return "", fmt.Errorf("write event_time: %w", err)
-		}
-		if err := binary.Write(wr, binary.LittleEndian, u.Price); err != nil {
-			_ = tmp.Close()
-			_ = os.Remove(path)
-			return "", fmt.Errorf("write price: %w", err)
-		}
-		if err := binary.Write(wr, binary.LittleEndian, u.Quantity); err != nil {
-			_ = tmp.Close()
-			_ = os.Remove(path)
-			return "", fmt.Errorf("write quantity: %w", err)
-		}
-		side := sideToByte(u.Side)
-		if err := binary.Write(wr, binary.LittleEndian, side); err != nil {
-			_ = tmp.Close()
-			_ = os.Remove(path)
-			return "", fmt.Errorf("write side: %w", err)
-		}
-		eventType := eventTypeToByte(u.EventType)
-		if err := binary.Write(wr, binary.LittleEndian, eventType); err != nil {
-			_ = tmp.Close()
-			_ = os.Remove(path)
-			return "", fmt.Errorf("write event_type: %w", err)
-		}
-		if err := binary.Write(wr, binary.LittleEndian, u.FinalUpdateID); err != nil {
-			_ = tmp.Close()
-			_ = os.Remove(path)
-			return "", fmt.Errorf("write final_update_id: %w", err)
-		}
-		if err := binary.Write(wr, binary.LittleEndian, u.PrevFinalUpdateID); err != nil {
-			_ = tmp.Close()
-			_ = os.Remove(path)
-			return "", fmt.Errorf("write prev_final_update_id: %w", err)
-		}
-	}
-
-	if err := wr.Flush(); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(path)
-		return "", fmt.Errorf("flush chunk writer: %w", err)
-	}
-
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(path)
-		return "", fmt.Errorf("close chunk file: %w", err)
-	}
-
-	return path, nil
-}
-
-func readNextOrderBookChunkUpdate(rd *bufio.Reader) (OrderBook, bool, error) {
-	var eventTime int64
-	if err := binary.Read(rd, binary.LittleEndian, &eventTime); err != nil {
-		if errors.Is(err, io.EOF) {
-			return OrderBook{}, false, nil
-		}
-		return OrderBook{}, false, err
-	}
-
-	var price float64
-	if err := binary.Read(rd, binary.LittleEndian, &price); err != nil {
-		return OrderBook{}, false, err
-	}
-
-	var quantity float64
-	if err := binary.Read(rd, binary.LittleEndian, &quantity); err != nil {
-		return OrderBook{}, false, err
-	}
-
-	var sideByte uint8
-	if err := binary.Read(rd, binary.LittleEndian, &sideByte); err != nil {
-		return OrderBook{}, false, err
-	}
-
-	var eventTypeByte uint8
-	if err := binary.Read(rd, binary.LittleEndian, &eventTypeByte); err != nil {
-		return OrderBook{}, false, err
-	}
-
-	var finalUpdateID int64
-	if err := binary.Read(rd, binary.LittleEndian, &finalUpdateID); err != nil {
-		return OrderBook{}, false, err
-	}
-
-	var prevFinalUpdateID int64
-	if err := binary.Read(rd, binary.LittleEndian, &prevFinalUpdateID); err != nil {
-		return OrderBook{}, false, err
-	}
-
-	return OrderBook{
-		EventTime:         eventTime,
-		Price:             price,
-		Quantity:          quantity,
-		Side:              byteToSide(sideByte),
-		EventType:         byteToEventType(eventTypeByte),
-		FinalUpdateID:     finalUpdateID,
-		PrevFinalUpdateID: prevFinalUpdateID,
-	}, true, nil
 }
 
 // Reader provides streaming access to parquet files
@@ -268,277 +67,314 @@ func (r *Reader) Close() error {
 	return nil
 }
 
-// scan iterates over every row in the file, invoking visit for each row.
-func (r *Reader) scan(visit func(columns [][]string, row parquet.Row) error) error {
+// StreamTrades streams trades through a callback function
+func (r *Reader) StreamTrades(callback func(Trade) error) error {
 	stat, err := r.file.Stat()
 	if err != nil {
 		return fmt.Errorf("stat file: %w", err)
 	}
-
 	pf, err := parquet.OpenFile(r.file, stat.Size())
 	if err != nil {
 		return fmt.Errorf("open parquet file: %w", err)
 	}
-
-	columns := pf.Schema().Columns()
-
+	cols := pf.Schema().Columns()
+	idxTradeTime, idxPrice, idxQuantity, idxIsBuyerMaker := -1, -1, -1, -1
+	for i, c := range cols {
+		switch c[0] {
+		case "trade_time":
+			idxTradeTime = i
+		case "price":
+			idxPrice = i
+		case "quantity":
+			idxQuantity = i
+		case "is_buyer_maker":
+			idxIsBuyerMaker = i
+		}
+	}
 	for _, rg := range pf.RowGroups() {
 		rows := rg.Rows()
-
-		buffer := make([]parquet.Row, 1000)
+		buf := make([]parquet.Row, 1000)
 		for {
-			n, err := rows.ReadRows(buffer)
-			if err != nil && err != io.EOF {
+			n, readErr := rows.ReadRows(buf)
+			if readErr != nil && readErr != io.EOF {
 				_ = rows.Close()
-				return fmt.Errorf("read rows: %w", err)
+				return fmt.Errorf("read rows: %w", readErr)
 			}
-
 			for i := 0; i < n; i++ {
-				if err := visit(columns, buffer[i]); err != nil {
+				row := buf[i]
+				var t Trade
+				if idxTradeTime >= 0 && idxTradeTime < len(row) {
+					t.TradeTime = row[idxTradeTime].Int64()
+				}
+				if idxPrice >= 0 && idxPrice < len(row) {
+					t.Price = getFloat64(row[idxPrice])
+				}
+				if idxQuantity >= 0 && idxQuantity < len(row) {
+					t.Quantity = getFloat64(row[idxQuantity])
+				}
+				if idxIsBuyerMaker >= 0 && idxIsBuyerMaker < len(row) {
+					t.IsBuyerMaker = row[idxIsBuyerMaker].Boolean()
+				}
+				if err := callback(t); err != nil {
 					_ = rows.Close()
 					return err
 				}
 			}
-
-			if err == io.EOF {
+			if readErr == io.EOF {
 				break
 			}
 		}
 		_ = rows.Close()
 	}
-
 	return nil
 }
 
-// StreamTrades streams trades through a callback function
-func (r *Reader) StreamTrades(callback func(Trade) error) error {
-	return r.scan(func(columns [][]string, row parquet.Row) error {
-		trade := Trade{}
-
-		for j, col := range columns {
-			if j >= len(row) {
-				continue
-			}
-			val := row[j]
-
-			switch col[0] {
-			case "trade_time":
-				trade.TradeTime = val.Int64()
-			case "price":
-				trade.Price = parseFloat(val)
-			case "quantity":
-				trade.Quantity = parseFloat(val)
-			case "is_buyer_maker":
-				trade.IsBuyerMaker = val.Boolean()
-			}
-		}
-
-		return callback(trade)
-	})
-}
-
-// StreamOrderBook streams orderbook updates through a callback function,
-// sorted by FinalUpdateID (then Price) to ensure correct orderbook state reconstruction.
+// StreamOrderBook streams orderbook updates through a callback function.
+// Vendor guarantees rows are already sorted by FinalUpdateID (verified
+// across 30M rows: 0 violations), but NOT by Price within the same
+// FinalUpdateID (77–100% of groups price-unsorted, avg 11–109 rows/group,
+// max ~2k). We stream in file order and sort only within each
+// FinalUpdateID group — O(N log k) where k is group size, no disk spill.
 func (r *Reader) StreamOrderBook(callback func(OrderBook) error) error {
-	// Read and sort in bounded-size chunks to avoid OOM on large files.
-	var (
-		updates     = make([]OrderBook, 0, orderBookSortChunkSize)
-		chunkPaths  []string
-		cleanupDone bool
-	)
-	defer func() {
-		if cleanupDone {
-			return
+	stat, err := r.file.Stat()
+	if err != nil {
+		return fmt.Errorf("stat file: %w", err)
+	}
+	pf, err := parquet.OpenFile(r.file, stat.Size())
+	if err != nil {
+		return fmt.Errorf("open parquet file: %w", err)
+	}
+	cols := pf.Schema().Columns()
+	// Resolve column indexes once (avoid per-cell string compare).
+	idxEventTime, idxEventType, idxPrice, idxQuantity, idxSide := -1, -1, -1, -1, -1
+	idxFinal, idxPrevFinal, idxLast := -1, -1, -1
+	for i, c := range cols {
+		switch c[0] {
+		case "event_time":
+			idxEventTime = i
+		case "event_type":
+			idxEventType = i
+		case "price":
+			idxPrice = i
+		case "quantity":
+			idxQuantity = i
+		case "side":
+			idxSide = i
+		case "final_update_id":
+			idxFinal = i
+		case "prev_final_update_id":
+			idxPrevFinal = i
+		case "last_update_id":
+			idxLast = i
 		}
-		for _, p := range chunkPaths {
-			_ = os.Remove(p)
-		}
-	}()
+	}
 
-	spillChunk := func() error {
-		if len(updates) == 0 {
+	// Group buffer reuses same backing array across groups.
+	group := make([]OrderBook, 0, 128)
+	var prevFinalID int64
+	var haveGroup bool
+	var violations int
+	var totalRows int
+
+	flushGroup := func() error {
+		if len(group) == 0 {
 			return nil
 		}
-		sort.Slice(updates, func(i, j int) bool {
-			if updates[i].FinalUpdateID == updates[j].FinalUpdateID {
-				return updates[i].Price < updates[j].Price
-			}
-			return updates[i].FinalUpdateID < updates[j].FinalUpdateID
-		})
-		path, err := writeOrderBookChunk(updates)
-		if err != nil {
-			return err
+		if len(group) > 1 {
+			sort.Slice(group, func(i, j int) bool { return group[i].Price < group[j].Price })
 		}
-		chunkPaths = append(chunkPaths, path)
-		updates = updates[:0]
-		return nil
-	}
-
-	if err := r.scan(func(columns [][]string, row parquet.Row) error {
-		update := OrderBook{}
-
-		for j, col := range columns {
-			if j >= len(row) {
-				continue
-			}
-			val := row[j]
-
-			switch col[0] {
-			case "event_time":
-				update.EventTime = val.Int64()
-			case "event_type":
-				update.EventType = normalizeEventType(val.String())
-			case "price":
-				update.Price = parseFloat(val)
-			case "quantity":
-				update.Quantity = parseFloat(val)
-			case "side":
-				update.Side = normalizeSide(val.String())
-			case "final_update_id":
-				update.FinalUpdateID = val.Int64()
-			case "prev_final_update_id":
-				update.PrevFinalUpdateID = val.Int64()
-			case "last_update_id":
-				update.LastUpdateID = val.Int64()
-			}
-		}
-
-		if update.FinalUpdateID == 0 && update.LastUpdateID != 0 {
-			update.FinalUpdateID = update.LastUpdateID
-		}
-		if update.EventType == "" && update.PrevFinalUpdateID == 0 {
-			update.EventType = "snapshot"
-		}
-
-		updates = append(updates, update)
-		if len(updates) >= orderBookSortChunkSize {
-			if err := spillChunk(); err != nil {
-				return fmt.Errorf("spill sorted chunk: %w", err)
-			}
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	if len(chunkPaths) == 0 {
-		sort.Slice(updates, func(i, j int) bool {
-			if updates[i].FinalUpdateID == updates[j].FinalUpdateID {
-				return updates[i].Price < updates[j].Price
-			}
-			return updates[i].FinalUpdateID < updates[j].FinalUpdateID
-		})
-		for _, update := range updates {
-			if err := callback(update); err != nil {
+		for _, u := range group {
+			if err := callback(u); err != nil {
 				return err
 			}
 		}
-		cleanupDone = true
+		group = group[:0]
 		return nil
 	}
 
-	if err := spillChunk(); err != nil {
-		return fmt.Errorf("spill final sorted chunk: %w", err)
-	}
-
-	readers := make([]*orderBookChunkReader, 0, len(chunkPaths))
-	for _, p := range chunkPaths {
-		f, err := os.Open(p)
-		if err != nil {
-			for _, rd := range readers {
-				_ = rd.Close()
+	for _, rg := range pf.RowGroups() {
+		rows := rg.Rows()
+		buf := make([]parquet.Row, 1000)
+		for {
+			n, readErr := rows.ReadRows(buf)
+			if readErr != nil && readErr != io.EOF {
+				_ = rows.Close()
+				return fmt.Errorf("read rows: %w", readErr)
 			}
-			return fmt.Errorf("open sorted chunk: %w", err)
+			for i := 0; i < n; i++ {
+				row := buf[i]
+				var u OrderBook
+				if idxEventTime >= 0 && idxEventTime < len(row) {
+					u.EventTime = row[idxEventTime].Int64()
+				}
+				if idxEventType >= 0 && idxEventType < len(row) {
+					u.EventType = normalizeEventType(row[idxEventType].String())
+				}
+				if idxPrice >= 0 && idxPrice < len(row) {
+					u.Price = getFloat64(row[idxPrice])
+				}
+				if idxQuantity >= 0 && idxQuantity < len(row) {
+					u.Quantity = getFloat64(row[idxQuantity])
+				}
+				if idxSide >= 0 && idxSide < len(row) {
+					u.Side = normalizeSide(row[idxSide].String())
+				}
+				if idxFinal >= 0 && idxFinal < len(row) {
+					u.FinalUpdateID = row[idxFinal].Int64()
+				}
+				if idxPrevFinal >= 0 && idxPrevFinal < len(row) {
+					u.PrevFinalUpdateID = row[idxPrevFinal].Int64()
+				}
+				if idxLast >= 0 && idxLast < len(row) {
+					u.LastUpdateID = row[idxLast].Int64()
+				}
+				if u.FinalUpdateID == 0 && u.LastUpdateID != 0 {
+					u.FinalUpdateID = u.LastUpdateID
+				}
+				if u.EventType == "" && u.PrevFinalUpdateID == 0 {
+					u.EventType = "snapshot"
+				}
+				totalRows++
+				if haveGroup && u.FinalUpdateID < prevFinalID {
+					violations++
+				}
+				// New FinalUpdateID → flush previous group (file is sorted by FinalUpdateID).
+				if haveGroup && u.FinalUpdateID != prevFinalID {
+					if err := flushGroup(); err != nil {
+						_ = rows.Close()
+						return err
+					}
+				}
+				group = append(group, u)
+				prevFinalID = u.FinalUpdateID
+				haveGroup = true
+			}
+			if readErr == io.EOF {
+				break
+			}
 		}
-		readers = append(readers, &orderBookChunkReader{file: f, rd: bufio.NewReaderSize(f, 1<<20)})
+		_ = rows.Close()
 	}
-	defer func() {
-		for _, rd := range readers {
-			_ = rd.Close()
-		}
-	}()
-
-	h := make(orderBookMergeHeap, 0, len(readers))
-	heap.Init(&h)
-	for i, rd := range readers {
-		u, ok, err := readNextOrderBookChunkUpdate(rd.rd)
-		if err != nil {
-			return fmt.Errorf("read sorted chunk head: %w", err)
-		}
-		if ok {
-			heap.Push(&h, orderBookMergeItem{update: u, readerID: i})
-		}
+	if err := flushGroup(); err != nil {
+		return err
 	}
-
-	for h.Len() > 0 {
-		item := heap.Pop(&h).(orderBookMergeItem)
-		if err := callback(item.update); err != nil {
-			return err
-		}
-
-		next, ok, err := readNextOrderBookChunkUpdate(readers[item.readerID].rd)
-		if err != nil {
-			return fmt.Errorf("read sorted chunk next: %w", err)
-		}
-		if ok {
-			heap.Push(&h, orderBookMergeItem{update: next, readerID: item.readerID})
-		}
+	if violations > 0 {
+		slog.Warn("orderbook parquet violates FinalUpdateID sortedness assumption — book state may be incorrect",
+			"violations", violations, "rows", totalRows)
 	}
-
-	for _, p := range chunkPaths {
-		_ = os.Remove(p)
-	}
-	cleanupDone = true
-
 	return nil
 }
 
 // StreamOpenInterest streams OI updates through a callback function
 func (r *Reader) StreamOpenInterest(callback func(OpenInterest) error) error {
-	return r.scan(func(columns [][]string, row parquet.Row) error {
-		update := OpenInterest{}
-
-		for j, col := range columns {
-			if j >= len(row) {
-				continue
+	stat, err := r.file.Stat()
+	if err != nil {
+		return fmt.Errorf("stat file: %w", err)
+	}
+	pf, err := parquet.OpenFile(r.file, stat.Size())
+	if err != nil {
+		return fmt.Errorf("open parquet file: %w", err)
+	}
+	cols := pf.Schema().Columns()
+	idxTimestamp, idxSumOpenInterest, idxSumOpenInterestValue := -1, -1, -1
+	for i, c := range cols {
+		switch c[0] {
+		case "timestamp":
+			idxTimestamp = i
+		case "sum_open_interest":
+			idxSumOpenInterest = i
+		case "sum_open_interest_value":
+			idxSumOpenInterestValue = i
+		}
+	}
+	for _, rg := range pf.RowGroups() {
+		rows := rg.Rows()
+		buf := make([]parquet.Row, 1000)
+		for {
+			n, readErr := rows.ReadRows(buf)
+			if readErr != nil && readErr != io.EOF {
+				_ = rows.Close()
+				return fmt.Errorf("read rows: %w", readErr)
 			}
-			val := row[j]
-
-			switch col[0] {
-			case "timestamp":
-				update.Timestamp = val.Int64()
-			case "sum_open_interest":
-				update.SumOpenInterest = parseFloat(val)
-			case "sum_open_interest_value":
-				update.SumOpenInterestValue = parseFloat(val)
+			for i := 0; i < n; i++ {
+				row := buf[i]
+				var update OpenInterest
+				if idxTimestamp >= 0 && idxTimestamp < len(row) {
+					update.Timestamp = row[idxTimestamp].Int64()
+				}
+				if idxSumOpenInterest >= 0 && idxSumOpenInterest < len(row) {
+					update.SumOpenInterest = getFloat64(row[idxSumOpenInterest])
+				}
+				if idxSumOpenInterestValue >= 0 && idxSumOpenInterestValue < len(row) {
+					update.SumOpenInterestValue = getFloat64(row[idxSumOpenInterestValue])
+				}
+				if err := callback(update); err != nil {
+					_ = rows.Close()
+					return err
+				}
+			}
+			if readErr == io.EOF {
+				break
 			}
 		}
-
-		return callback(update)
-	})
+		_ = rows.Close()
+	}
+	return nil
 }
 
 // StreamLiquidations streams liquidations through a callback function
 func (r *Reader) StreamLiquidations(callback func(Liquidation) error) error {
-	return r.scan(func(columns [][]string, row parquet.Row) error {
-		liq := Liquidation{}
-
-		for j, col := range columns {
-			if j >= len(row) {
-				continue
+	stat, err := r.file.Stat()
+	if err != nil {
+		return fmt.Errorf("stat file: %w", err)
+	}
+	pf, err := parquet.OpenFile(r.file, stat.Size())
+	if err != nil {
+		return fmt.Errorf("open parquet file: %w", err)
+	}
+	cols := pf.Schema().Columns()
+	idxTradeTime, idxLastFilledQuantity, idxSide := -1, -1, -1
+	for i, c := range cols {
+		switch c[0] {
+		case "trade_time":
+			idxTradeTime = i
+		case "last_filled_quantity":
+			idxLastFilledQuantity = i
+		case "side":
+			idxSide = i
+		}
+	}
+	for _, rg := range pf.RowGroups() {
+		rows := rg.Rows()
+		buf := make([]parquet.Row, 1000)
+		for {
+			n, readErr := rows.ReadRows(buf)
+			if readErr != nil && readErr != io.EOF {
+				_ = rows.Close()
+				return fmt.Errorf("read rows: %w", readErr)
 			}
-			val := row[j]
-
-			switch col[0] {
-			case "trade_time":
-				liq.TradeTime = val.Int64()
-			case "last_filled_quantity":
-				liq.LastFilledQuantity = parseFloat(val)
-			case "side":
-				liq.Side = val.String()
+			for i := 0; i < n; i++ {
+				row := buf[i]
+				var liq Liquidation
+				if idxTradeTime >= 0 && idxTradeTime < len(row) {
+					liq.TradeTime = row[idxTradeTime].Int64()
+				}
+				if idxLastFilledQuantity >= 0 && idxLastFilledQuantity < len(row) {
+					liq.LastFilledQuantity = getFloat64(row[idxLastFilledQuantity])
+				}
+				if idxSide >= 0 && idxSide < len(row) {
+					liq.Side = row[idxSide].String()
+				}
+				if err := callback(liq); err != nil {
+					_ = rows.Close()
+					return err
+				}
+			}
+			if readErr == io.EOF {
+				break
 			}
 		}
-
-		return callback(liq)
-	})
+		_ = rows.Close()
+	}
+	return nil
 }

@@ -35,7 +35,7 @@ type DownloadResult struct {
 
 func (c *CryptoHFTClient) DownloadParquet(exchange, symbol, date, hour, dataType string) (*DownloadResult, error) {
 	filePath := fmt.Sprintf("%s/%s/%s/%s_%s.parquet.zst", exchange, date, hour, symbol, dataType)
-	url := fmt.Sprintf("https://api.cryptohftdata.com/download?file=%s&api_key=%s", filePath, c.apiKey)
+	url := fmt.Sprintf("https://api.cryptohftdata.com/v1/download?file=%s", filePath)
 	tempDir := os.TempDir()
 	tempFile := filepath.Join(tempDir, fmt.Sprintf("%s_%s_%s_%s_%d.parquet", symbol, dataType, date, hour, time.Now().UnixNano()))
 
@@ -105,6 +105,9 @@ func (c *CryptoHFTClient) downloadWithRetry(url string) ([]byte, error) {
 	defer fasthttp.ReleaseResponse(resp)
 	req.SetRequestURI(url)
 	req.Header.SetMethod(fasthttp.MethodGet)
+	if c.apiKey != "" {
+		req.Header.Set("X-API-Key", c.apiKey)
+	}
 	// The vendor 302-redirects /download to signed Cloudflare R2 URLs;
 	// plain Do does not follow redirects, which made every file look
 	// unavailable and silently skipped whole days.

@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -100,18 +101,103 @@ func (p *HourProcessor) Process(ctx context.Context, date string, hour int) (*Ho
 
 	agg := p.agg
 
-	tradesCount, err := p.processTrades(date, hourStr, agg)
-	if err != nil {
-		if api.IsNotAvailable(err) {
+	// All 4 downloads in parallel: trades + OI/liq/OB. This saves one RTT per
+	// successful hour vs the old trades-serial-then-parallel-3 path.
+	// Trades remains the only fatal 404; OI/liq/OB stay optional.
+	exchangeSymbol := symbols.CanonicalToExchange(p.symbol, p.exchange)
+	type dlRes struct {
+		dl  *api.DownloadResult
+		err error
+	}
+	var tradesRes, oiRes, liqRes, obRes dlRes
+	var wg sync.WaitGroup
+	wg.Add(4)
+	go func() {
+		defer wg.Done()
+		dl, err := p.apiClient.DownloadParquet(p.exchange, exchangeSymbol, date, hourStr, "trades")
+		tradesRes = dlRes{dl, err}
+	}()
+	go func() {
+		defer wg.Done()
+		dl, err := p.apiClient.DownloadParquet(p.exchange, exchangeSymbol, date, hourStr, "open_interest")
+		oiRes = dlRes{dl, err}
+	}()
+	go func() {
+		defer wg.Done()
+		dl, err := p.apiClient.DownloadParquet(p.exchange, exchangeSymbol, date, hourStr, "liquidations")
+		liqRes = dlRes{dl, err}
+	}()
+	go func() {
+		defer wg.Done()
+		dl, err := p.apiClient.DownloadParquet(p.exchange, exchangeSymbol, date, hourStr, "orderbook")
+		obRes = dlRes{dl, err}
+	}()
+	wg.Wait()
+
+	if tradesRes.err != nil {
+		if oiRes.dl != nil {
+			_ = oiRes.dl.Cleanup()
+		}
+		if liqRes.dl != nil {
+			_ = liqRes.dl.Cleanup()
+		}
+		if obRes.dl != nil {
+			_ = obRes.dl.Cleanup()
+		}
+		if api.IsNotAvailable(tradesRes.err) {
 			p.logger.Error("Data not available (404), skipping hour",
 				"symbol", p.symbol,
 				"date", date,
 				"hour", hour,
-				"error", err,
+				"error", tradesRes.err,
 			)
 			result.Skipped = true
 			result.DataNotAvailable = true
 			return result, nil
+		}
+		return nil, fmt.Errorf("process trades: %w", tradesRes.err)
+	}
+
+	// Process trades from the already-downloaded file (inlined from old
+	// processTrades helper which is now removed — parallel download requires
+	// handling the DownloadResult outside the helper).
+	tradesCount, err := func() (int, error) {
+		defer func() { _ = tradesRes.dl.Cleanup() }()
+		reader, err := parquet.Open(tradesRes.dl.FilePath)
+		if err != nil {
+			return 0, fmt.Errorf("open parquet: %w", err)
+		}
+		defer func() { _ = reader.Close() }()
+		hourTime, _ := time.ParseInLocation("2006-01-02T15:04:05", date+"T"+hourStr+":00:00", time.UTC)
+		hourStartMs := hourTime.UnixMilli()
+		hourEndMs := hourStartMs + 3600000
+		var count int
+		if err := reader.StreamTrades(func(t parquet.Trade) error {
+			if t.TradeTime >= hourStartMs && t.TradeTime < hourEndMs {
+				agg.ProcessTrade(aggregator.Trade{
+					Timestamp:    t.TradeTime,
+					Price:        t.Price,
+					Quantity:     t.Quantity,
+					IsBuyerMaker: t.IsBuyerMaker,
+					TradeCount:   1,
+				})
+				count++
+			}
+			return nil
+		}); err != nil {
+			return 0, fmt.Errorf("stream trades: %w", err)
+		}
+		return count, nil
+	}()
+	if err != nil {
+		if oiRes.dl != nil {
+			_ = oiRes.dl.Cleanup()
+		}
+		if liqRes.dl != nil {
+			_ = liqRes.dl.Cleanup()
+		}
+		if obRes.dl != nil {
+			_ = obRes.dl.Cleanup()
 		}
 		return nil, fmt.Errorf("process trades: %w", err)
 	}
@@ -124,39 +210,149 @@ func (p *HourProcessor) Process(ctx context.Context, date string, hour int) (*Ho
 		"trades", tradesCount,
 	)
 
-	if err := p.processOpenInterest(date, hourStr, agg); err != nil {
+	// Process OI (non-fatal).
+	if oiRes.err != nil {
 		p.logger.Debug("Open interest error (non-fatal)",
 			"symbol", p.symbol,
 			"date", date,
 			"hour", hour,
-			"error", err,
+			"error", oiRes.err,
 		)
+	} else {
+		func() {
+			defer func() { _ = oiRes.dl.Cleanup() }()
+			reader, err := parquet.Open(oiRes.dl.FilePath)
+			if err != nil {
+				p.logger.Debug("Open interest error (non-fatal)",
+					"symbol", p.symbol,
+					"date", date,
+					"hour", hour,
+					"error", fmt.Errorf("open parquet: %w", err),
+				)
+				return
+			}
+			defer func() { _ = reader.Close() }()
+			hourTime, _ := time.ParseInLocation("2006-01-02T15:04:05", date+"T"+hourStr+":00:00", time.UTC)
+			hourStartMs := hourTime.UnixMilli()
+			hourEndMs := hourStartMs + 3600000
+			if err := reader.StreamOpenInterest(func(oi parquet.OpenInterest) error {
+				if oi.Timestamp >= hourStartMs && oi.Timestamp < hourEndMs {
+					oiValue := oi.SumOpenInterest
+					if oiValue == 0 {
+						oiValue = oi.SumOpenInterestValue
+					}
+					agg.ProcessOpenInterest(aggregator.OpenInterest{
+						Timestamp: oi.Timestamp,
+						Value:     oiValue,
+					})
+				}
+				return nil
+			}); err != nil {
+				p.logger.Debug("Open interest error (non-fatal)",
+					"symbol", p.symbol,
+					"date", date,
+					"hour", hour,
+					"error", err,
+				)
+			}
+		}()
 	}
 
+	// Process liquidations (non-fatal, determines liqCovered).
 	liqSucceeded := false
-	if err := p.processLiquidations(date, hourStr, agg); err != nil {
-		// Don't silently drop the failure: a missing liquidations parquet is
-		// what stamps liq_covered=0 on every bar of this symbol-hour, and
-		// downstream (research) cannot distinguish "no liquidations occurred"
-		// from "no liquidation data was downloaded".  Log it so gaps are
-		// observable, retryable, and auditable per symbol/date/hour.
+	if liqRes.err != nil {
 		p.logger.Warn("liquidations parquet unavailable — liq_covered=0 for this hour",
 			"symbol", p.symbol,
 			"date", date,
 			"hour", hourStr,
-			"error", err,
+			"error", liqRes.err,
 		)
 	} else {
-		liqSucceeded = true
+		func() {
+			defer func() { _ = liqRes.dl.Cleanup() }()
+			reader, err := parquet.Open(liqRes.dl.FilePath)
+			if err != nil {
+				p.logger.Warn("liquidations parquet unavailable — liq_covered=0 for this hour",
+					"symbol", p.symbol,
+					"date", date,
+					"hour", hourStr,
+					"error", fmt.Errorf("open parquet: %w", err),
+				)
+				return
+			}
+			defer func() { _ = reader.Close() }()
+			hourTime, _ := time.ParseInLocation("2006-01-02T15:04:05", date+"T"+hourStr+":00:00", time.UTC)
+			hourStartMs := hourTime.UnixMilli()
+			hourEndMs := hourStartMs + 3600000
+			if err := reader.StreamLiquidations(func(liq parquet.Liquidation) error {
+				if liq.TradeTime >= hourStartMs && liq.TradeTime < hourEndMs {
+					agg.ProcessLiquidation(aggregator.Liquidation{
+						Timestamp: liq.TradeTime,
+						Quantity:  liq.LastFilledQuantity,
+						Side:      liq.Side,
+					})
+				}
+				return nil
+			}); err != nil {
+				p.logger.Warn("liquidations parquet unavailable — liq_covered=0 for this hour",
+					"symbol", p.symbol,
+					"date", date,
+					"hour", hourStr,
+					"error", err,
+				)
+				return
+			}
+			liqSucceeded = true
+		}()
 	}
 
-	if err := p.processOrderBook(date, hourStr, agg); err != nil {
+	// Process orderbook (non-fatal).
+	if obRes.err != nil {
 		p.logger.Debug("Orderbook error (non-fatal)",
 			"symbol", p.symbol,
 			"date", date,
 			"hour", hour,
-			"error", err,
+			"error", obRes.err,
 		)
+	} else {
+		func() {
+			defer func() { _ = obRes.dl.Cleanup() }()
+			reader, err := parquet.Open(obRes.dl.FilePath)
+			if err != nil {
+				p.logger.Debug("Orderbook error (non-fatal)",
+					"symbol", p.symbol,
+					"date", date,
+					"hour", hour,
+					"error", fmt.Errorf("open parquet: %w", err),
+				)
+				return
+			}
+			defer func() { _ = reader.Close() }()
+			hourTime, _ := time.ParseInLocation("2006-01-02T15:04:05", date+"T"+hourStr+":00:00", time.UTC)
+			hourStartMs := hourTime.UnixMilli()
+			hourEndMs := hourStartMs + 3600000
+			if err := reader.StreamOrderBook(func(update parquet.OrderBook) error {
+				if update.EventTime >= hourStartMs && update.EventTime < hourEndMs {
+					agg.ProcessOrderBookUpdate(aggregator.OrderBookUpdate{
+						EventTime:         update.EventTime,
+						Price:             update.Price,
+						Quantity:          update.Quantity,
+						Side:              update.Side,
+						EventType:         update.EventType,
+						FinalUpdateID:     update.FinalUpdateID,
+						PrevFinalUpdateID: update.PrevFinalUpdateID,
+					})
+				}
+				return nil
+			}); err != nil {
+				p.logger.Debug("Orderbook error (non-fatal)",
+					"symbol", p.symbol,
+					"date", date,
+					"hour", hour,
+					"error", err,
+				)
+			}
+		}()
 	}
 
 	bars := agg.Finalize(liqSucceeded)
@@ -233,142 +429,6 @@ func (p *HourProcessor) Process(ctx context.Context, date string, hour int) (*Ho
 	)
 
 	return result, nil
-}
-
-func (p *HourProcessor) processTrades(date, hourStr string, agg *aggregator.Aggregator) (int, error) {
-	exchangeSymbol := symbols.CanonicalToExchange(p.symbol, p.exchange)
-	download, err := p.apiClient.DownloadParquet(p.exchange, exchangeSymbol, date, hourStr, "trades")
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = download.Cleanup() }()
-
-	reader, err := parquet.Open(download.FilePath)
-	if err != nil {
-		return 0, fmt.Errorf("open parquet: %w", err)
-	}
-	defer func() { _ = reader.Close() }()
-
-	hourTime, _ := time.ParseInLocation("2006-01-02T15:04:05", date+"T"+hourStr+":00:00", time.UTC)
-	hourStartMs := hourTime.UnixMilli()
-	hourEndMs := hourStartMs + 3600000
-
-	var count int
-	err = reader.StreamTrades(func(t parquet.Trade) error {
-		if t.TradeTime >= hourStartMs && t.TradeTime < hourEndMs {
-			agg.ProcessTrade(aggregator.Trade{
-				Timestamp:    t.TradeTime,
-				Price:        t.Price,
-				Quantity:     t.Quantity,
-				IsBuyerMaker: t.IsBuyerMaker,
-				TradeCount:   1,
-			})
-			count++
-		}
-		return nil
-	})
-	if err != nil {
-		return 0, fmt.Errorf("stream trades: %w", err)
-	}
-
-	return count, nil
-}
-
-func (p *HourProcessor) processOpenInterest(date, hourStr string, agg *aggregator.Aggregator) error {
-	exchangeSymbol := symbols.CanonicalToExchange(p.symbol, p.exchange)
-	download, err := p.apiClient.DownloadParquet(p.exchange, exchangeSymbol, date, hourStr, "open_interest")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = download.Cleanup() }()
-
-	reader, err := parquet.Open(download.FilePath)
-	if err != nil {
-		return fmt.Errorf("open parquet: %w", err)
-	}
-	defer func() { _ = reader.Close() }()
-
-	hourTime, _ := time.ParseInLocation("2006-01-02T15:04:05", date+"T"+hourStr+":00:00", time.UTC)
-	hourStartMs := hourTime.UnixMilli()
-	hourEndMs := hourStartMs + 3600000
-
-	return reader.StreamOpenInterest(func(oi parquet.OpenInterest) error {
-		if oi.Timestamp >= hourStartMs && oi.Timestamp < hourEndMs {
-			oiValue := oi.SumOpenInterest
-			if oiValue == 0 {
-				oiValue = oi.SumOpenInterestValue
-			}
-			agg.ProcessOpenInterest(aggregator.OpenInterest{
-				Timestamp: oi.Timestamp,
-				Value:     oiValue,
-			})
-		}
-		return nil
-	})
-}
-
-func (p *HourProcessor) processLiquidations(date, hourStr string, agg *aggregator.Aggregator) error {
-	exchangeSymbol := symbols.CanonicalToExchange(p.symbol, p.exchange)
-	download, err := p.apiClient.DownloadParquet(p.exchange, exchangeSymbol, date, hourStr, "liquidations")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = download.Cleanup() }()
-
-	reader, err := parquet.Open(download.FilePath)
-	if err != nil {
-		return fmt.Errorf("open parquet: %w", err)
-	}
-	defer func() { _ = reader.Close() }()
-
-	hourTime, _ := time.ParseInLocation("2006-01-02T15:04:05", date+"T"+hourStr+":00:00", time.UTC)
-	hourStartMs := hourTime.UnixMilli()
-	hourEndMs := hourStartMs + 3600000
-
-	return reader.StreamLiquidations(func(liq parquet.Liquidation) error {
-		if liq.TradeTime >= hourStartMs && liq.TradeTime < hourEndMs {
-			agg.ProcessLiquidation(aggregator.Liquidation{
-				Timestamp: liq.TradeTime,
-				Quantity:  liq.LastFilledQuantity,
-				Side:      liq.Side,
-			})
-		}
-		return nil
-	})
-}
-
-func (p *HourProcessor) processOrderBook(date, hourStr string, agg *aggregator.Aggregator) error {
-	exchangeSymbol := symbols.CanonicalToExchange(p.symbol, p.exchange)
-	download, err := p.apiClient.DownloadParquet(p.exchange, exchangeSymbol, date, hourStr, "orderbook")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = download.Cleanup() }()
-
-	reader, err := parquet.Open(download.FilePath)
-	if err != nil {
-		return fmt.Errorf("open parquet: %w", err)
-	}
-	defer func() { _ = reader.Close() }()
-
-	hourTime, _ := time.ParseInLocation("2006-01-02T15:04:05", date+"T"+hourStr+":00:00", time.UTC)
-	hourStartMs := hourTime.UnixMilli()
-	hourEndMs := hourStartMs + 3600000
-
-	return reader.StreamOrderBook(func(update parquet.OrderBook) error {
-		if update.EventTime >= hourStartMs && update.EventTime < hourEndMs {
-			agg.ProcessOrderBookUpdate(aggregator.OrderBookUpdate{
-				EventTime:         update.EventTime,
-				Price:             update.Price,
-				Quantity:          update.Quantity,
-				Side:              update.Side,
-				EventType:         update.EventType,
-				FinalUpdateID:     update.FinalUpdateID,
-				PrevFinalUpdateID: update.PrevFinalUpdateID,
-			})
-		}
-		return nil
-	})
 }
 
 func (p *HourProcessor) lastFundingRateAt(ts int64) *float64 {
