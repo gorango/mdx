@@ -244,18 +244,37 @@ afterFunding:
 }
 
 func (c *Coordinator) filterExisting(ctx context.Context, hours []time.Time) []time.Time {
-	var filtered []time.Time
+	if len(hours) == 0 {
+		return nil
+	}
 	dbExchange := symbols.MapExchangeToDB(c.config.Exchange)
+	existing, err := c.db.ExistingHours(ctx, dbExchange, c.config.Symbol, hours)
+	if err != nil {
+		c.logger.Warn("Failed to batch-check existing hours, falling back to per-hour",
+			"symbol", c.config.Symbol,
+			"error", err,
+		)
+		// Fallback: per-hour queries (preserves old behaviour on query failure).
+		var filtered []time.Time
+		for _, hour := range hours {
+			exists, err := c.db.HourExists(ctx, dbExchange, c.config.Symbol, hour)
+			if err != nil {
+				c.logger.Warn("Failed to check hour exists",
+					"symbol", c.config.Symbol,
+					"hour", hour,
+					"error", err,
+				)
+				filtered = append(filtered, hour)
+			} else if !exists {
+				filtered = append(filtered, hour)
+			}
+		}
+		return filtered
+	}
+	var filtered []time.Time
 	for _, hour := range hours {
-		exists, err := c.db.HourExists(ctx, dbExchange, c.config.Symbol, hour)
-		if err != nil {
-			c.logger.Warn("Failed to check hour exists",
-				"symbol", c.config.Symbol,
-				"hour", hour,
-				"error", err,
-			)
-			filtered = append(filtered, hour)
-		} else if !exists {
+		ht := hour.Truncate(time.Hour)
+		if !existing[ht] {
 			filtered = append(filtered, hour)
 		}
 	}

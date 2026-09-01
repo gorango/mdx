@@ -354,6 +354,55 @@ func (db *DB) HourExists(ctx context.Context, exchange, symbol string, hour time
 	return count > 0, nil
 }
 
+// ExistingHours returns the set of hours (truncated to hour) that have at least
+// one bar in [min(hours), max(hours)+1h). Single round-trip replaces N
+// HourExists queries in resume mode. See pipeline/coordinator.go:filterExisting.
+func (db *DB) ExistingHours(ctx context.Context, exchange, symbol string, hours []time.Time) (map[time.Time]bool, error) {
+	if len(hours) == 0 {
+		return map[time.Time]bool{}, nil
+	}
+	minH := hours[0].Truncate(time.Hour)
+	maxH := hours[0].Truncate(time.Hour)
+	for _, h := range hours[1:] {
+		ht := h.Truncate(time.Hour)
+		if ht.Before(minH) {
+			minH = ht
+		}
+		if ht.After(maxH) {
+			maxH = ht
+		}
+	}
+	// inclusive max hour → exclusive upper bound
+	maxExcl := maxH.Add(time.Hour)
+
+	rows, err := db.pool.Query(ctx, `
+		SELECT date_trunc('hour', timestamp) AS h
+		FROM orderbook_bars
+		WHERE exchange = $1 AND symbol = $2
+		  AND timestamp >= $3 AND timestamp < $4
+		GROUP BY h
+	`, exchange, symbol, minH, maxExcl)
+	if err != nil {
+		return nil, fmt.Errorf("query existing hours: %w", err)
+	}
+	defer rows.Close()
+
+	existing := make(map[time.Time]bool, len(hours))
+	for rows.Next() {
+		var h time.Time
+		if err := rows.Scan(&h); err != nil {
+			return nil, fmt.Errorf("scan existing hour: %w", err)
+		}
+		// date_trunc returns timestamptz; normalize to UTC truncated hour
+		ht := h.UTC().Truncate(time.Hour)
+		existing[ht] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("existing hours rows: %w", err)
+	}
+	return existing, nil
+}
+
 // SetLiqUnknownRange stamps a symbol's bars in [start, end) with the
 // "no liquidation data" encoding: liq_long_vol / liq_short_vol = NULL and
 // liq_covered = 0.  Used when the cryptohftdata liquidations parquet is

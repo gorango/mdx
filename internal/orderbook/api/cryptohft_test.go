@@ -14,7 +14,7 @@ func TestDownloadParquet404(t *testing.T) {
 	defer gock.Off()
 
 	gock.New("https://api.cryptohftdata.com").
-		Get("/download").
+		Get("/v1/download").
 		Reply(http.StatusNotFound).BodyString("404: data not available")
 
 	client := NewCryptoHFTClient("test-api-key")
@@ -29,7 +29,7 @@ func TestDownloadParquetHTTPError(t *testing.T) {
 	defer gock.Off()
 
 	gock.New("https://api.cryptohftdata.com").
-		Get("/download").
+		Get("/v1/download").
 		ReplyError(io.EOF)
 
 	client := NewCryptoHFTClient("test-api-key")

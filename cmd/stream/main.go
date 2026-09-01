@@ -19,7 +19,6 @@ func main() {
 	s, err := streamer.New(streamer.Options{
 		ConfigPath:    *configPath,
 		NatsURL:       *natsURL,
-		Symbols:       symbols,
 		Logger:        slog.Default(),
 		BackfillOB:    *backfillOB,
 		Netflow:       *netflow,
