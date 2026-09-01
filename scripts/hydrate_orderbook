@@ -28,11 +28,21 @@ if [ "$OVERWRITE" = "true" ]; then
 	OVERWRITE_FLAG="-overwrite"
 fi
 
+# Default to --resume when not overwriting: ExistingHours batch skips the
+# 61h already present and only fetches the tail, instead of re-streaming
+# all 99h via gap-fill. Gap-fill is still available via OVERWRITE=true
+# or by passing --resume explicitly through the just wrapper if needed.
+RESUME_FLAG=""
+if [ "$OVERWRITE" = "false" ]; then
+	RESUME_FLAG="-resume"
+fi
+
 POOL_LABEL="orderbook $START→$END"
 run_symbol() {
 	"$BINARY" \
 		-symbol "$1" \
 		$OVERWRITE_FLAG \
+		$RESUME_FLAG \
 		-start "$START" \
 		-end "$END" \
 		-funding-cache "$FUNDING_CACHE"
