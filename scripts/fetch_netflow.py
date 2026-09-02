@@ -6,7 +6,7 @@
 
 Hourly inflow/outflow into/out of labeled exchange addresses (Binance hot/cold
 wallets from data/netflow/labels.json), landing in `flow_bars` (twain db).
-Mirrors scripts/fetch-btcd.py conventions: incremental by default (watermark in
+Mirrors scripts/fetch_btcd.py conventions: incremental by default (watermark in
 `netflow_fetch_state`), --backfill to rebuild from a date.
 
 Sources (all free BigQuery public datasets, ~1 TB/month free tier):

@@ -140,47 +140,47 @@ sql-ob-progress START='' END='':
 # Fetch/update USDT.D — incremental by default (only fetches missing days).
 # Pass a number to force-refetch that many days (e.g. 365 for full).
 usdtd-fetch *FLAGS='':
-	uv run scripts/fetch-usdtd.py {{FLAGS}}
+	uv run scripts/fetch_usdtd.py {{FLAGS}}
 
 usdtd-recompute:
-	uv run scripts/fetch-usdtd.py --no-fetch
+	uv run scripts/fetch_usdtd.py --no-fetch
 
 # --- FRED macro (St. Louis Fed → postgres) ---
 
 # Fetch/update FRED macro series (incremental by default; --backfill to rebuild).
 fred-fetch *FLAGS='':
-	uv run scripts/fetch-fred.py {{FLAGS}}
+	uv run scripts/fetch_fred.py {{FLAGS}}
 
 fred-backfill DATE:
-	uv run scripts/fetch-fred.py --backfill {{DATE}}
+	uv run scripts/fetch_fred.py --backfill {{DATE}}
 
 # Coverage + gap report per series (no fetch).
 fred-freshness:
-	uv run scripts/fetch-fred.py --freshness-only
+	uv run scripts/fetch_fred.py --freshness-only
 
 fred-status:
 	psql {{PG_URL}} -c "SELECT series_id, COUNT(*), MIN(timestamp)::date, MAX(timestamp)::date FROM fred_observations GROUP BY series_id ORDER BY series_id;"
 
 fred-series:
-	uv run scripts/fetch-fred.py --list-series
+	uv run scripts/fetch_fred.py --list-series
 
 # --- On-chain flow (BigQuery → postgres) ---
 
 # Fetch/update exchange netflow (BTC/ETH/ERC20 into/out of labeled exchange
 # addresses). Incremental by default; pass flags through (e.g. -- --backfill 2024-01-01).
 netflow-fetch *FLAGS='':
-	uv run scripts/fetch-netflow.py {{FLAGS}}
+	uv run scripts/fetch_netflow.py {{FLAGS}}
 
 netflow-backfill DATE:
-	uv run scripts/fetch-netflow.py --backfill {{DATE}}
+	uv run scripts/fetch_netflow.py --backfill {{DATE}}
 
 # Only (re)load data/netflow/labels.json into address_labels.
 netflow-labels:
-	uv run scripts/fetch-netflow.py --labels-only
+	uv run scripts/fetch_netflow.py --labels-only
 
 # Dataset staleness + flow_bars gap report (no fetch).
 netflow-freshness:
-	uv run scripts/fetch-netflow.py --freshness-only
+	uv run scripts/fetch_netflow.py --freshness-only
 
 netflow-status:
 	psql {{PG_URL}} -c "SELECT asset, exchange, COUNT(*), MIN(timestamp), MAX(timestamp) FROM flow_bars GROUP BY asset, exchange ORDER BY asset;"
