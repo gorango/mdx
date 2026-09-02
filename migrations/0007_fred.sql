@@ -1,6 +1,6 @@
 -- FRED macro series (Federal Reserve Economic Data → postgres).
 -- Daily/weekly/monthly observations from api.stlouisfed.org, populated by
--- scripts/fetch-fred.py on a schedule. Long/narrow layout: one row per
+-- scripts/fetch_fred.py on a schedule. Long/narrow layout: one row per
 -- (series, date). Tiny volume (~15 series × 365 rows/yr ≈ 5k rows/yr).
 --
 -- Conventions match the rest of the schema:

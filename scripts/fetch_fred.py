@@ -5,7 +5,7 @@
 """Fetch FRED macro series (St. Louis Fed) into postgres.
 
 Daily/weekly/monthly observations land in `fred_observations` (long/narrow:
-one row per series×date). Mirrors scripts/fetch-netflow.py conventions:
+one row per series×date). Mirrors scripts/fetch_netflow.py conventions:
 incremental by default (watermark in `fred_fetch_state`), --backfill to
 rebuild from a date, --freshness-only for gap reporting.
 

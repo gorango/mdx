@@ -1,6 +1,6 @@
 -- On-chain exchange flow features (BigQuery public datasets → postgres).
 -- Hourly inflow/outflow/netflow of BTC, ETH (and ERC20 WBTC/USDT/USDC) into/out of
--- labeled exchange addresses. Populated by scripts/fetch-netflow.py on a schedule;
+-- labeled exchange addresses. Populated by scripts/fetch_netflow.py on a schedule;
 -- the script upserts into flow_bars and maintains the netflow_fetch_state watermark.
 --
 -- Conventions match the rest of the schema:

@@ -6,7 +6,7 @@
 
 BTC.D = BTC Market Cap / Sum(top N coin market caps) * 100
 
-Same per-coin caching approach as fetch-usdtd.py. Re-run to retry failed coins.
+Same per-coin caching approach as fetch_usdtd.py. Re-run to retry failed coins.
 Lite mode uses top 5 coins (~80% accuracy, 5× faster).
 
 Usage:

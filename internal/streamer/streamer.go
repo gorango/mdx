@@ -564,7 +564,7 @@ func (s *Streamer) startOBBackfill() {
 // startNetflowBackfill refreshes on-chain exchange flows (BigQuery → flow_bars)
 // on a 6h cadence, gated by the -netflow flag. On-chain flow is slow-moving
 // regime/sizing data, so 6h is plenty: the underlying datasets advance
-// block-by-block, and fetch-netflow.py is idempotent (watermark + upsert).
+// block-by-block, and fetch_netflow.py is idempotent (watermark + upsert).
 // Runs once on startup, then every 6h.
 func (s *Streamer) startNetflowBackfill() {
 	if !s.netflow {
@@ -585,7 +585,7 @@ func (s *Streamer) startNetflowBackfill() {
 	}()
 }
 
-// runNetflowFetch shells out to scripts/fetch-netflow.py (uv run). The script
+// runNetflowFetch shells out to scripts/fetch_netflow.py (uv run). The script
 // handles staleness clamping and watermarking; a failure here just skips this
 // cycle — the next tick retries.
 func (s *Streamer) runNetflowFetch() {
