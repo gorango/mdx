@@ -1,5 +1,8 @@
 set dotenv-load
 
+@default:
+	@just --list
+
 # --- Build ---
 
 build:
@@ -198,5 +201,3 @@ dev-paper-buy SYMBOL AMOUNT:
 
 dev-paper-limit SYMBOL AMOUNT PRICE:
 	just trade-order paper {{SYMBOL}} buy {{AMOUNT}} {{PRICE}}
-
-
