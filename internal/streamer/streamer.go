@@ -4,17 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
-	"math"
-	"os"
-	"os/exec"
-	"os/signal"
-	"strings"
-	"sync"
-	"syscall"
-	"time"
-
-	"github.com/joho/godotenv"
 	"gorango/mdx/domain/symbols"
 	"gorango/mdx/domain/types"
 	"gorango/mdx/internal/cache"
@@ -25,10 +14,23 @@ import (
 	"gorango/mdx/internal/orderbook/pipeline"
 	"gorango/mdx/internal/pubsub"
 	"gorango/mdx/internal/rest"
-	exchange "gorango/mdx/internal/ws"
 	"gorango/mdx/internal/ws/binance"
 	"gorango/mdx/internal/ws/bybit"
 	"gorango/mdx/internal/ws/hyperliquid"
+	"log/slog"
+	"math"
+	"os"
+	"os/exec"
+	"os/signal"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
+
+	exchange "gorango/mdx/internal/ws"
+
+	"github.com/joho/godotenv"
 )
 
 type Streamer struct {
@@ -49,6 +51,9 @@ type Streamer struct {
 	backfillOB    bool
 	netflow       bool
 	netflowScript string
+
+	obRunning      atomic.Bool
+	netflowRunning atomic.Bool
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -529,6 +534,37 @@ func (h *statusHandler) OnStatusChange(name string, status exchange.ConnectionSt
 	}
 }
 
+// Backfill cadence: cryptoHFT hourly parquets become available ~15min after
+// the hour closes (e.g. 08:00-08:59 around 09:15), and :00 is reserved for
+// time-sensitive work (bar flush, feature writing, live engine). Both
+// backfills therefore run off the top of the hour: OB hourly at :20,
+// netflow every 6h at :35 (15min stagger so the two never start together).
+const (
+	obBackfillMinute  = 20
+	netflowMinute     = 35
+	netflowInterval   = 6 * time.Hour
+	startupSkipWindow = 30 * time.Minute
+)
+
+// nextHourlyAt returns the next HH:minute (UTC) strictly after now.
+func nextHourlyAt(now time.Time, minute int) time.Time {
+	next := now.Truncate(time.Hour).Add(time.Duration(minute) * time.Minute)
+	if !next.After(now) {
+		next = next.Add(time.Hour)
+	}
+	return next
+}
+
+// nextSixHourAt returns the next 00/06/12/18:minute (UTC) strictly after now.
+func nextSixHourAt(now time.Time, minute int) time.Time {
+	base := now.Truncate(time.Hour)
+	base = base.Add(-time.Duration(base.Hour()%6) * time.Hour).Add(time.Duration(minute) * time.Minute)
+	if !base.After(now) {
+		base = base.Add(netflowInterval)
+	}
+	return base
+}
+
 func (s *Streamer) startOBBackfill() {
 	if !s.backfillOB {
 		return
@@ -538,48 +574,74 @@ func (s *Streamer) startOBBackfill() {
 	}
 
 	go func() {
-		now := time.Now()
-		next := now.Truncate(time.Hour).Add(time.Hour)
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-time.After(time.Until(next)):
-		}
-
-		ticker := time.NewTicker(time.Hour)
-		defer ticker.Stop()
+		next := nextHourlyAt(time.Now().UTC(), obBackfillMinute)
+		s.logger.Info("OB backfill scheduled",
+			"next_run", next.Format("2006-01-02T15:04Z"),
+			"cadence", "hourly at :25 UTC",
+		)
+		timer := time.NewTimer(time.Until(next))
+		defer timer.Stop()
 
 		for {
-			s.runOBBackfill()
-
 			select {
 			case <-s.ctx.Done():
 				return
-			case <-ticker.C:
+			case <-timer.C:
+				if !s.obRunning.CompareAndSwap(false, true) {
+					s.logger.Warn("OB backfill still running, skipping tick")
+				} else {
+					s.runOBBackfill()
+					s.obRunning.Store(false)
+				}
+				next = nextHourlyAt(time.Now().UTC(), obBackfillMinute)
+				timer.Reset(time.Until(next))
 			}
 		}
 	}()
 }
 
 // startNetflowBackfill refreshes on-chain exchange flows (BigQuery → flow_bars)
-// on a 6h cadence, gated by the -netflow flag. On-chain flow is slow-moving
+// every 6h at :30 UTC, gated by the -netflow flag. On-chain flow is slow-moving
 // regime/sizing data, so 6h is plenty: the underlying datasets advance
 // block-by-block, and fetch_netflow.py is idempotent (watermark + upsert).
-// Runs once on startup, then every 6h.
+// Runs once on startup for freshness (unless the first scheduled tick is
+// within startupSkipWindow, to avoid a double run), then on the 6h cadence.
 func (s *Streamer) startNetflowBackfill() {
 	if !s.netflow {
 		return
 	}
 	go func() {
-		s.runNetflowFetch()
-		ticker := time.NewTicker(6 * time.Hour)
-		defer ticker.Stop()
+		next := nextSixHourAt(time.Now().UTC(), netflowMinute)
+		s.logger.Info("netflow backfill scheduled",
+			"next_run", next.Format("2006-01-02T15:04Z"),
+			"cadence", "6h at :30 UTC",
+		)
+		if time.Until(next) > startupSkipWindow {
+			if s.netflowRunning.CompareAndSwap(false, true) {
+				s.runNetflowFetch()
+				s.netflowRunning.Store(false)
+			}
+		} else {
+			s.logger.Info("netflow startup run skipped, scheduled tick is near",
+				"next_run", next.Format("2006-01-02T15:04Z"),
+			)
+		}
+
+		timer := time.NewTimer(time.Until(next))
+		defer timer.Stop()
 		for {
 			select {
 			case <-s.ctx.Done():
 				return
-			case <-ticker.C:
-				s.runNetflowFetch()
+			case <-timer.C:
+				if !s.netflowRunning.CompareAndSwap(false, true) {
+					s.logger.Warn("netflow fetch still running, skipping tick")
+				} else {
+					s.runNetflowFetch()
+					s.netflowRunning.Store(false)
+				}
+				next = nextSixHourAt(time.Now().UTC(), netflowMinute)
+				timer.Reset(time.Until(next))
 			}
 		}
 	}()
