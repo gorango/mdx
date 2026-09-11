@@ -91,12 +91,11 @@ trade-order MODE SYMBOL SIDE AMOUNT *ARGS='':
 daemon CONFIG='config.yaml' NATS='nats://localhost:4222':
 	go run ./cmd/exchange -config {{CONFIG}} -nats {{NATS}}
 
-# Extra args (e.g. `-backfill-ob`) are passed through to cmd/stream.
+# Extra args (e.g. `-backfill-ob=false`) are passed through to cmd/stream.
+# OB backfill + netflow run by default; pass `-backfill-ob=false` /
+# `-netflow=false` to disable.
 stream *ARGS='':
 	@go run ./cmd/stream {{ARGS}}
-
-stream-backfill:
-	@go run ./cmd/stream -backfill-ob
 
 ob-hydrate SYMBOL START END:
 	go run ./cmd/ob-hydrate \
