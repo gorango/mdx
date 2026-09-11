@@ -14,8 +14,8 @@ func main() {
 	configPath := flag.String("config", "config.yaml", "Path to config file")
 	natsURL := flag.String("nats", "nats://localhost:4222", "NATS server URL")
 	symbolsPath := flag.String("symbols", "../config/symbols.yaml", "Path to symbols file")
-	backfillOB := flag.Bool("backfill-ob", false, "Enable hourly cryptoHFT ob-hydrate backfill at :25 UTC (overwrite: rebuild prior two hours from cryptoHFT + settled Binance funding once parquets are available; each hour swept twice so a delayed tail is still captured)")
-	netflow := flag.Bool("netflow", false, "Enable on-chain exchange netflow refresh (BigQuery -> flow_bars) every 6h at :30 UTC")
+	backfillOB := flag.Bool("backfill-ob", true, "Hourly cryptoHFT ob-hydrate backfill at :25 UTC (overwrite: rebuild prior two hours from cryptoHFT + settled Binance funding once parquets are available; each hour swept twice so a delayed tail is still captured) [default on, pass -backfill-ob=false to disable]")
+	netflow := flag.Bool("netflow", true, "On-chain exchange netflow refresh (BigQuery -> flow_bars) every 6h at :30 UTC [default on, pass -netflow=false to disable]")
 	netflowScript := flag.String("netflow-script", "scripts/fetch_netflow.py", "Path to fetch_netflow.py")
 	flag.Parse()
 
