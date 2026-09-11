@@ -51,9 +51,12 @@ type Streamer struct {
 	backfillOB    bool
 	netflow       bool
 	netflowScript string
+	fred          bool
+	fredScript    string
 
 	obRunning      atomic.Bool
 	netflowRunning atomic.Bool
+	fredRunning    atomic.Bool
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -68,6 +71,8 @@ type Options struct {
 	BackfillOB    bool
 	Netflow       bool
 	NetflowScript string
+	Fred          bool
+	FredScript    string
 }
 
 func New(opts Options) (*Streamer, error) {
@@ -142,6 +147,8 @@ func New(opts Options) (*Streamer, error) {
 		backfillOB:    opts.BackfillOB,
 		netflow:       opts.Netflow,
 		netflowScript: opts.NetflowScript,
+		fred:          opts.Fred,
+		fredScript:    opts.FredScript,
 		clients:       make(map[string]exchange.Client),
 		logger:        opts.Logger,
 		ctx:           ctx,
@@ -168,6 +175,7 @@ func (s *Streamer) Start() error {
 	s.startExchangeClients()
 	s.startOBBackfill()
 	s.startNetflowBackfill()
+	s.startFredBackfill()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -539,10 +547,14 @@ func (h *statusHandler) OnStatusChange(name string, status exchange.ConnectionSt
 // time-sensitive work (bar flush, feature writing, live engine). Both
 // backfills therefore run off the top of the hour: OB hourly at :20,
 // netflow every 6h at :35 (15min stagger so the two never start together).
+// FRED publishes EOD after 18:00 ET (22:00 UTC in EDT, 23:00 UTC in EST),
+// so it runs daily at 23:30 UTC — after the update in both cases.
 const (
 	obBackfillMinute  = 20
 	netflowMinute     = 35
 	netflowInterval   = 6 * time.Hour
+	fredHour          = 23
+	fredMinute        = 30
 	startupSkipWindow = 30 * time.Minute
 )
 
@@ -563,6 +575,15 @@ func nextSixHourAt(now time.Time, minute int) time.Time {
 		base = base.Add(netflowInterval)
 	}
 	return base
+}
+
+// nextDailyAt returns the next HH:minute (UTC) strictly after now.
+func nextDailyAt(now time.Time, hour, minute int) time.Time {
+	next := now.Truncate(24 * time.Hour).Add(time.Duration(hour)*time.Hour + time.Duration(minute)*time.Minute)
+	if !next.After(now) {
+		next = next.Add(24 * time.Hour)
+	}
+	return next
 }
 
 func (s *Streamer) startOBBackfill() {
@@ -645,6 +666,78 @@ func (s *Streamer) startNetflowBackfill() {
 			}
 		}
 	}()
+}
+
+// startFredBackfill refreshes FRED macro series (St. Louis Fed ->
+// fred_observations) daily at 23:30 UTC, gated by the -fred flag. Macro is
+// slow-moving regime data and the script is incremental (watermark in
+// fred_fetch_state) and idempotent, so daily is plenty. Runs once on
+// startup for freshness (unless the next scheduled tick is within
+// startupSkipWindow, to avoid a double run), then on the daily cadence.
+// A missing FRED_API_KEY fails loudly per cycle (script exits 1); the next
+// day retries. Stale macro forward-fills downstream, never NaNs.
+func (s *Streamer) startFredBackfill() {
+	if !s.fred {
+		return
+	}
+	go func() {
+		next := nextDailyAt(time.Now().UTC(), fredHour, fredMinute)
+		s.logger.Info("fred backfill scheduled",
+			"next_run", next.Format("2006-01-02T15:04Z"),
+			"cadence", "daily at 23:30 UTC",
+		)
+		if time.Until(next) > startupSkipWindow {
+			if s.fredRunning.CompareAndSwap(false, true) {
+				s.runFredFetch()
+				s.fredRunning.Store(false)
+			}
+		} else {
+			s.logger.Info("fred startup run skipped, scheduled tick is near",
+				"next_run", next.Format("2006-01-02T15:04Z"),
+			)
+		}
+
+		timer := time.NewTimer(time.Until(next))
+		defer timer.Stop()
+		for {
+			select {
+			case <-s.ctx.Done():
+				return
+			case <-timer.C:
+				if !s.fredRunning.CompareAndSwap(false, true) {
+					s.logger.Warn("fred fetch still running, skipping tick")
+				} else {
+					s.runFredFetch()
+					s.fredRunning.Store(false)
+				}
+				next = nextDailyAt(time.Now().UTC(), fredHour, fredMinute)
+				timer.Reset(time.Until(next))
+			}
+		}
+	}()
+}
+
+// runFredFetch shells out to scripts/fetch_fred.py (uv run). Default args =
+// incremental from watermark; a failure here just skips this cycle — the
+// next day retries.
+func (s *Streamer) runFredFetch() {
+	script := s.fredScript
+	if _, err := os.Stat(script); err != nil {
+		s.logger.Error("fred script not found, skipping", "path", script)
+		return
+	}
+	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "uv", "run", script)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		s.logger.Error("fred fetch failed",
+			"error", err,
+			"output", lastLines(string(out), 20),
+		)
+		return
+	}
+	s.logger.Info("fred fetch completed", "output", lastLines(string(out), 30))
 }
 
 // runNetflowFetch shells out to scripts/fetch_netflow.py (uv run). The script
