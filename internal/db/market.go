@@ -28,7 +28,7 @@ func (db *DB) InsertPriceBars(ctx context.Context, exchange, symbol string, bars
 
 	tmpTable := fmt.Sprintf("tmp_price_bars_%d", time.Now().UnixNano())
 
-	_, err = tx.Exec(ctx, fmt.Sprintf(`CREATE TEMP TABLE %s (LIKE price_bars INCLUDING DEFAULTS)`, tmpTable))
+	_, err = tx.Exec(ctx, fmt.Sprintf(`CREATE TEMP TABLE %s (LIKE price_bars INCLUDING DEFAULTS) ON COMMIT DROP`, tmpTable))
 	if err != nil {
 		return fmt.Errorf("create temp table: %w", err)
 	}
@@ -138,7 +138,7 @@ func (db *DB) InsertOrderbookBars(ctx context.Context, exchange, symbol string, 
 
 	tmpTable := fmt.Sprintf("tmp_orderbook_bars_%d", time.Now().UnixNano())
 
-	_, err = tx.Exec(ctx, fmt.Sprintf(`CREATE TEMP TABLE %s (LIKE orderbook_bars INCLUDING DEFAULTS)`, tmpTable))
+	_, err = tx.Exec(ctx, fmt.Sprintf(`CREATE TEMP TABLE %s (LIKE orderbook_bars INCLUDING DEFAULTS) ON COMMIT DROP`, tmpTable))
 	if err != nil {
 		return fmt.Errorf("create temp table: %w", err)
 	}
