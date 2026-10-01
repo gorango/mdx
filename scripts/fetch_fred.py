@@ -55,11 +55,19 @@ FRED_BASE = "https://api.stlouisfed.org"
 DEFAULT_SERIES = [
     "DFF",            # Effective Federal Funds Rate (daily, %)
     "DTB3",           # 3-Month Treasury Bill (daily, %)
+    "DGS2",           # 2-Year Treasury Constant Maturity (daily, %) — front-end rate
     "DGS10",          # 10-Year Treasury Constant Maturity (daily, %)
+    "DFII10",         # 10-Year TIPS real yield (daily, %) — real-rate stress
     "T10Y2Y",         # 10Y-2Y Treasury Spread (daily, %)
     "BAMLH0A0HYM2",   # ICE BofA US High Yield OAS (daily, %)
     "DTWEXBGS",       # Trade Weighted U.S. Dollar Index, Broad, Goods & Services (daily)
     "DCOILWTICO",     # WTI Crude Oil Price (daily, $/bbl)
+    "DCOILBRENTEU",   # Brent Crude Oil Price (daily, $/bbl)
+    "SP500",          # S&P 500 (daily, index) — risk-asset lead
+    "NASDAQ100",      # Nasdaq-100 (daily, index) — risk-asset lead
+    "NASDAQCOM",      # Nasdaq Composite (daily, index)
+    "DJIA",           # Dow Jones Industrial Average (daily, index)
+    "VXNCLS",         # CBOE Nasdaq-100 Volatility Index (daily) — tech vol
     "WALCL",          # Fed Total Assets (weekly, $B, Wed)
     "M2SL",           # M2 Money Stock (monthly, $B, SA)
     "CPIAUCSL",       # CPI All Urban Consumers (monthly, SA)
