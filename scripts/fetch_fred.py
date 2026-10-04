@@ -21,10 +21,13 @@ dollar, oil, Fed balance sheet, money, inflation, labor, vol):
 
 Usage:
   just fred-fetch                          # incremental (from watermark)
-  just fred-fetch -- --backfill 2020-01-01 # rebuild from DATE
-  just fred-fetch -- --series DFF,T10Y2Y   # subset only
-  just fred-fetch -- --freshness-only      # gap/coverage report, no fetch
+  just fred-fetch --backfill 2020-01-01    # rebuild from DATE
+  just fred-fetch --series DFF,T10Y2Y      # subset only
+  just fred-fetch --freshness-only         # gap/coverage report, no fetch
   just fred-status                         # coverage per series (psql)
+
+(No `--` separator: the recipe forwards FLAGS verbatim, so a literal `--`
+ reaches argparse and is rejected.)
 
 Schedule: daily after 18:00 ET (FRED updates EOD). Tiny volume, so a
 single run backfills years in seconds.

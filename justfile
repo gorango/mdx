@@ -147,6 +147,16 @@ usdtd-fetch *FLAGS='':
 usdtd-recompute:
 	uv run scripts/fetch_usdtd.py --no-fetch
 
+# --- BTC.D ---
+
+# Fetch/update BTC.D (BTC dominance) — incremental by default (only fetches
+# missing days). Mirror of fetch_usdtd.py; see that script for flag semantics.
+#   just btcd-fetch                          — incremental
+#   just btcd-fetch --backfill 2025-07-01    — rebuild from a specific start
+#   just btcd-fetch --no-fetch               — recompute from cache only
+btcd-fetch *FLAGS='':
+	uv run scripts/fetch_btcd.py {{FLAGS}}
+
 # --- FRED macro (St. Louis Fed → postgres) ---
 
 # Fetch/update FRED macro series (incremental by default; --backfill to rebuild).

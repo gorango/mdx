@@ -10,10 +10,14 @@ Same per-coin caching approach as fetch_usdtd.py. Re-run to retry failed coins.
 Lite mode uses top 5 coins (~80% accuracy, 5× faster).
 
 Usage:
-  just btcd-fetch                    # incremental (fill gaps from cached)
-  just btcd-fetch -- --backfill 2025-07-01  # backfill to a specific start
-  just btcd-fetch -- --lite               # top 5 coins only
-  just btcd-fetch -- --no-fetch           # recompute from cache only
+  just btcd-fetch                          # incremental (fill gaps from cached)
+  just btcd-fetch --backfill 2025-07-01    # backfill to a specific start
+  just btcd-fetch --lite                   # top 5 coins only
+  just btcd-fetch --no-fetch               # recompute from cache only
+
+(No `--` separator: the recipe forwards FLAGS verbatim, so a literal `--`
+ reaches argparse and is rejected. Or invoke directly from market/:
+ `uv run scripts/fetch_btcd.py [flags]`.) Mirror of fetch_usdtd.py.
 """
 
 import os
