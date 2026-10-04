@@ -27,10 +27,13 @@ Caveats:
 
 Usage:
   just netflow-fetch                        # incremental (from watermark; ~365d if none)
-  just netflow-fetch -- --backfill 2024-01-01   # rebuild from DATE (idempotent upsert)
+  just netflow-fetch --backfill 2024-01-01  # rebuild from DATE (idempotent upsert)
   just netflow-labels                       # only (re)load data/netflow/labels.json
   just netflow-status                       # coverage per asset
   just netflow-freshness                    # dataset staleness + flow_bars gaps
+
+(No `--` separator: the recipe forwards FLAGS verbatim, so a literal `--`
+ reaches argparse and is rejected.)
 
 Freshness: each fetch clamps its horizon to the dataset's newest hour, so a
 stale batch-fed dataset yields no new rows (and no watermark advance) instead

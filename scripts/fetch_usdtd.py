@@ -10,10 +10,13 @@ Each coin's history is cached separately. Re-run to retry failed coins.
 Lite mode uses top 5 coins (~80% accuracy, 5× faster).
 
 Usage:
-  just usdtd-fetch                    # incremental (fill gaps from cached)
-  just usdtd-fetch -- --backfill 2025-07-01  # backfill to a specific start
-  just usdtd-fetch -- --lite               # top 5 coins only
-  just usdtd-fetch -- --no-fetch           # recompute from cache only
+  just usdtd-fetch                          # incremental (fill gaps from cached)
+  just usdtd-fetch --backfill 2025-07-01    # backfill to a specific start
+  just usdtd-fetch --lite                   # top 5 coins only
+  just usdtd-fetch --no-fetch               # recompute from cache only
+
+(No `--` separator: the recipe forwards FLAGS verbatim, so a literal `--`
+ reaches argparse and is rejected.)
 """
 
 import os

@@ -1,5 +1,5 @@
 -- Add NOTIFY trigger for real-time bar updates
--- Run with: just sql-notify-trigger
+-- Run with: just migrate  (applies every migrations/*.sql via scripts/migrate.sh)
 
 -- Trigger function for orderbook_bars
 CREATE OR REPLACE FUNCTION notify_orderbook_bar()
